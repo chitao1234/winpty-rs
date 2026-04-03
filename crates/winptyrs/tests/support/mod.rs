@@ -4,6 +4,7 @@ pub fn cmd_exe() -> String {
 }
 
 #[cfg(windows)]
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ProbeReport {
     pub cwd: String,

@@ -23,3 +23,10 @@ fn env_block_is_double_nul_terminated() {
     assert_eq!(env.as_wide().last().copied(), Some(0));
     assert_eq!(env.as_wide()[env.as_wide().len() - 2], 0);
 }
+
+#[test]
+fn empty_env_block_is_double_nul_terminated() {
+    let env = EnvBlock::from_pairs([]);
+
+    assert_eq!(env.as_wide(), &[0, 0]);
+}

@@ -18,3 +18,15 @@ fn resize_changes_reported_window_size() {
     let (_resized_output, resized_size) = read_until_size_report(&pty);
     assert_eq!(resized_size, (90, 30));
 }
+
+#[test]
+fn builder_initial_size_is_applied_when_opening_the_agent() {
+    let mut pty = AgentBuilder::new()
+        .size(PtySize::new(100, 40).unwrap())
+        .open()
+        .unwrap();
+    let _child = pty.spawn(SpawnConfig::new(resize_probe_exe())).unwrap();
+
+    let (_output, size) = read_until_size_report(&pty);
+    assert_eq!(size, (100, 40));
+}

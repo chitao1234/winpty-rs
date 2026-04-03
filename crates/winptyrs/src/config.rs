@@ -52,6 +52,9 @@ impl EnvBlock {
             wide.push(0);
         }
 
+        if wide.last().copied() != Some(0) {
+            wide.push(0);
+        }
         wide.push(0);
         Self { wide }
     }

@@ -57,6 +57,9 @@ jobs:
       - name: Bundled vendored sys build
         shell: bash -l {0}
         run: cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+      - name: Bundled vendored sys static build
+        shell: bash -l {0}
+        run: WINPTY_STATIC=1 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Override vendored sys build
         shell: bash -l {0}
         run: WINPTY_SOURCE_DIR="$GITHUB_WORKSPACE/crates/winptyrs-sys/vendor/winpty" cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
