@@ -38,6 +38,20 @@ Vendored mode optionally accepts:
 The vendored build copies the selected source tree into `OUT_DIR`, builds there,
 and links against the staged artifacts. It does not build in place.
 
+## Runtime Files
+
+`winpty` needs both the library and the agent executable at runtime.
+
+- `winpty-agent.exe` must live next to the module containing `libwinpty` code.
+- With dynamic linking, place `winpty-agent.exe` next to `winpty.dll`.
+- With static linking, place `winpty-agent.exe` next to the final executable.
+
+This repository enables workspace-local runtime staging into `target/` for its
+own Windows tests and examples via `.cargo/config.toml`.
+Published crates do not force that behavior on downstream consumers. If you
+ship an application that uses `winptyrs`, stage these runtime files as part of
+your packaging or install process.
+
 ## Workspace Layout
 
 - `crates/winptyrs-sys`

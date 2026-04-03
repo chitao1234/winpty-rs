@@ -69,6 +69,7 @@ struct LibraryLayout {
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=vendor/winpty");
+    println!("cargo:rerun-if-env-changed=WINPTYRS_STAGE_RUNTIME");
 
     let host = env::var("HOST").unwrap();
     let target = TargetInfo::read();
@@ -94,7 +95,8 @@ fn main() {
             })
     };
 
-    configure_winpty(&target, &layout).unwrap_or_else(|err| panic!("{err}"));
+    let link_kind = configure_winpty(&target, &layout).unwrap_or_else(|err| panic!("{err}"));
+    stage_runtime_files(&target, &layout, link_kind).unwrap_or_else(|err| panic!("{err}"));
 }
 
 fn build_vendored_layout() -> Result<LibraryLayout, String> {
@@ -223,7 +225,7 @@ fn run(command: &mut Command) -> Result<(), String> {
     }
 }
 
-fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<(), String> {
+fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<LinkKind, String> {
     let agent = layout
         .runtime
         .as_ref()
@@ -297,7 +299,7 @@ fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<(), S
     }
 
     println!("cargo:rustc-cfg=winpty_available");
-    Ok(())
+    Ok(link_kind)
 }
 
 fn emit_common_metadata(prefix: &str, layout: &LibraryLayout) {
@@ -320,6 +322,67 @@ fn emit_common_metadata(prefix: &str, layout: &LibraryLayout) {
     if let Some(static_lib) = &layout.static_lib {
         println!("cargo:{prefix}_static_lib={}", static_lib.display());
     }
+}
+
+fn stage_runtime_files(
+    target: &TargetInfo,
+    layout: &LibraryLayout,
+    link_kind: LinkKind,
+) -> Result<(), String> {
+    if !target.is_windows() || env::var("WINPTYRS_STAGE_RUNTIME").ok().as_deref() != Some("1") {
+        return Ok(());
+    }
+
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let profile_dir = profile_dir(&out_dir).ok_or_else(|| {
+        format!(
+            "OUT_DIR was not nested under target/<triple>/<profile>/build: {}",
+            out_dir.display()
+        )
+    })?;
+
+    let runtime = layout
+        .runtime
+        .as_ref()
+        .ok_or_else(|| "winpty layout is missing winpty-agent.exe".to_string())?;
+    copy_into_dir(runtime, &profile_dir)?;
+    copy_into_dir(runtime, &profile_dir.join("deps"))?;
+
+    if link_kind == LinkKind::Dynamic {
+        let dll = layout
+            .dll
+            .as_ref()
+            .ok_or_else(|| "dynamic winpty layout is missing winpty.dll".to_string())?;
+        copy_into_dir(dll, &profile_dir)?;
+        copy_into_dir(dll, &profile_dir.join("deps"))?;
+    }
+
+    Ok(())
+}
+
+fn profile_dir(out_dir: &Path) -> Option<PathBuf> {
+    out_dir.ancestors().nth(3).map(Path::to_path_buf)
+}
+
+fn copy_into_dir(source: &Path, dest_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest_dir)
+        .map_err(|err| format!("failed to create {}: {err}", dest_dir.display()))?;
+
+    let dest = dest_dir.join(
+        source
+            .file_name()
+            .ok_or_else(|| format!("runtime artifact has no file name: {}", source.display()))?,
+    );
+
+    fs::copy(source, &dest).map_err(|err| {
+        format!(
+            "failed to copy runtime artifact {} to {}: {err}",
+            source.display(),
+            dest.display()
+        )
+    })?;
+
+    Ok(())
 }
 
 fn emit_dynamic_link(
