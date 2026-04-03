@@ -28,8 +28,32 @@ In order to use Rust in your library/program, you need to add `winpty-rs` to you
 winpty-rs = "1.0"
 ```
 
-In order to enable winpty compatibility, you will need the winpty redistributable binaries available in your PATH and LIB.
-You can download them from the official [winpty repository releases](https://github.com/rprichard/winpty/releases/tag/0.4.3), or using any known package manager in Windows.
+ConPTY support is always compiled for Windows targets and uses the native Windows APIs by default.
+
+WinPTY support is discovered by the build script. On a native Windows host it can still fall back to `PATH` if
+`winpty-agent.exe` is installed. For deterministic builds, and especially for cross-compiling, prefer one of these
+environment layouts:
+
+- `WINPTY_DIR=<root>` accepts both a flat layout like `winpty-agent.exe`, `winpty.dll`, `winpty.lib`, and `libwinpty.a`
+  in the same directory, and an installed layout with `bin/` and `lib/` subdirectories.
+- `WINPTY_LIB_DIR=<dir>` and `WINPTY_BIN_DIR=<dir>` override the library and runtime directories directly.
+- `WINPTY_STATIC=1` forces static linking against `libwinpty.a`. By default the build script prefers dynamic linking
+  when an import library is available.
+
+For example, the local MinGW build tree produced by `winpty` itself works directly:
+
+```sh
+WINPTY_DIR="$HOME/ddev/winpty/build" cargo build --target x86_64-pc-windows-gnu
+```
+
+The installed `bin/` + `lib/` layout works as well:
+
+```sh
+WINPTY_DIR=/opt/winpty cargo build --target x86_64-pc-windows-gnu
+```
+
+If you want to use a local ConPTY package instead of the native Windows APIs, the build script also accepts
+`CONPTY_DIR`, `CONPTY_LIB_DIR`, and `CONPTY_BIN_DIR`.
 
 ## Usage
 This library offers two modes of operation, one that selects the PTY backend automatically and other that picks an specific backend that the user
@@ -68,8 +92,8 @@ let pty_args = PTYArgs {
 };
 
 // Initialize a winpty and a conpty pseudoterminal.
-let winpty = PTY::new_with_backend(&pty_args, PTYBackend::WinPTY).unwrap();
 let conpty = PTY::new_with_backend(&pty_args, PTYBackend::ConPTY).unwrap();
+let winpty = PTY::new_with_backend(&pty_args, PTYBackend::WinPTY).unwrap();
 ```
 
 ### General PTY operations

@@ -57,8 +57,8 @@ targets = ["x86_64-pc-windows-gnu"]
 conpty = []
 winpty = []
 conpty_local = []
-winpty_example = ["winpty"]
-conpty_example = ["conpty"]
+winpty_example = []
+conpty_example = []
 
 [lib]
 name = "winptyrs"
