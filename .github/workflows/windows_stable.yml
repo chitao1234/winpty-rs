@@ -54,6 +54,19 @@ jobs:
       - name: Cargo test
         shell: bash -l {0}
         run: cargo test --workspace --all-targets -- --test-threads=1
+      - name: Bundled vendored sys build
+        shell: bash -l {0}
+        run: cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+      - name: Override vendored sys build
+        shell: bash -l {0}
+        run: WINPTY_SOURCE_DIR="$GITHUB_WORKSPACE/crates/winptyrs-sys/vendor/winpty" cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+      - name: Verify staged runtime files
+        shell: bash -l {0}
+        run: |
+          test -f target/debug/winpty-agent.exe
+          test -f target/debug/winpty.dll
+          test -f target/debug/deps/winpty-agent.exe
+          test -f target/debug/deps/winpty.dll
       - name: Gather test coverage
         if: ${{ matrix.rust_toolchain == 'nightly' }}
         shell: bash -l {0}
