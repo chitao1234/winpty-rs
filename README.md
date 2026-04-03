@@ -1,143 +1,46 @@
-# WinPTY-rs
+# winpty-rs Workspace
 
-[![Package licenses](https://img.shields.io/crates/l/winpty-rs?style=flat-square)](https://github.com/andfoy/winpty-rs/blob/main/LICENSE-MIT)
-[![Crates.io](https://img.shields.io/crates/v/winpty-rs?style=flat-square)](https://crates.io/crates/winpty-rs)
-[![Crates.io (recent)](https://img.shields.io/crates/dr/winpty-rs?style=flat-square)](https://crates.io/crates/winpty-rs)
-[![docs.rs](https://img.shields.io/docsrs/winpty-rs?style=flat-square)](https://docs.rs/winpty-rs/latest)
-[![Library tests](https://github.com/andfoy/winpty-rs/actions/workflows/windows_stable.yml/badge.svg)](https://github.com/andfoy/winpty-rs/actions/workflows/windows_stable.yml)
-[![codecov](https://codecov.io/gh/andfoy/winpty-rs/branch/main/graph/badge.svg?token=A15MPACXNX)](https://codecov.io/gh/andfoy/winpty-rs)
+This repository now contains two crates:
 
-## Overview
-
-Create and spawn processes inside a pseudoterminal in Windows.
-
-This crate provides an abstraction over different backend implementations to spawn PTY processes in Windows.
-Right now this library supports using [`WinPTY`] and [`ConPTY`].
-
-The abstraction is represented through the [`PTY`] struct, which declares methods to initialize, spawn, read,
-write and get diverse information about the state of a process that is running inside a pseudoterminal.
-
-[`WinPTY`]: https://github.com/rprichard/winpty
-[`ConPTY`]: https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
+- `winptyrs-sys`: raw FFI bindings and native linking for winpty
+- `winptyrs`: a safe Rust wrapper around winpty
 
 ## Installation
-In order to use Rust in your library/program, you need to add `winpty-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-winpty-rs = "1.0"
+winptyrs = "0.1"
 ```
 
-ConPTY support is always compiled for Windows targets and uses the native Windows APIs by default.
+To force vendored mode:
 
-WinPTY support is discovered by the build script. On a native Windows host it can still fall back to `PATH` if
-`winpty-agent.exe` is installed. For deterministic builds, and especially for cross-compiling, prefer one of these
-environment layouts:
-
-- `WINPTY_DIR=<root>` accepts both a flat layout like `winpty-agent.exe`, `winpty.dll`, `winpty.lib`, and `libwinpty.a`
-  in the same directory, and an installed layout with `bin/` and `lib/` subdirectories.
-- `WINPTY_LIB_DIR=<dir>` and `WINPTY_BIN_DIR=<dir>` override the library and runtime directories directly.
-- `WINPTY_STATIC=1` forces static linking against `libwinpty.a`. By default the build script prefers dynamic linking
-  when an import library is available.
-
-For example, the local MinGW build tree produced by `winpty` itself works directly:
-
-```sh
-WINPTY_DIR="$HOME/ddev/winpty/build" cargo build --target x86_64-pc-windows-gnu
+```toml
+[dependencies]
+winptyrs = { version = "0.1", features = ["vendored"] }
 ```
 
-The installed `bin/` + `lib/` layout works as well:
+Vendored mode uses the bundled `crates/winptyrs-sys/vendor/winpty` source tree
+by default.
 
-```sh
-WINPTY_DIR=/opt/winpty cargo build --target x86_64-pc-windows-gnu
-```
+Discovery mode accepts the following environment variables:
 
-If you want to use a local ConPTY package instead of the native Windows APIs, the build script also accepts
-`CONPTY_DIR`, `CONPTY_LIB_DIR`, and `CONPTY_BIN_DIR`.
+- `WINPTY_DIR`
+- `WINPTY_LIB_DIR`
+- `WINPTY_BIN_DIR`
+- `WINPTY_INCLUDE_DIR`
+- `WINPTY_STATIC=1` to force static linking
+- `WINPTY_STATIC=0` to force dynamic linking
 
-## Usage
-This library offers two modes of operation, one that selects the PTY backend automatically and other that picks an specific backend that the user
-prefers.
+Vendored mode optionally accepts:
 
-### Creating a PTY setting the backend automatically
-```rust
-use std::ffi::OsString;
-use winptyrs::{PTY, PTYArgs, MouseMode, AgentConfig};
+- `WINPTY_SOURCE_DIR=/path/to/winpty`
 
-let cmd = OsString::from("c:\\windows\\system32\\cmd.exe");
-let pty_args = PTYArgs {
-    cols: 80,
-    rows: 25,
-    mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
-    timeout: 10000,
-    agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
-};
+The vendored build copies the selected source tree into `OUT_DIR`, builds there,
+and links against the staged artifacts. It does not build in place.
 
-// Initialize a pseudoterminal.
-let mut pty = PTY::new(&pty_args).unwrap();
-```
+## Workspace Layout
 
-### Creating a pseudoterminal using a specific backend.
-```rust
-use std::ffi::OsString;
-use winptyrs::{PTY, PTYArgs, MouseMode, AgentConfig, PTYBackend};
+- `crates/winptyrs-sys`
+- `crates/winptyrs`
 
-let cmd = OsString::from("c:\\windows\\system32\\cmd.exe");
-let pty_args = PTYArgs {
-    cols: 80,
-    rows: 25,
-    mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
-    timeout: 10000,
-    agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
-};
-
-// Initialize a winpty and a conpty pseudoterminal.
-let conpty = PTY::new_with_backend(&pty_args, PTYBackend::ConPTY).unwrap();
-let winpty = PTY::new_with_backend(&pty_args, PTYBackend::WinPTY).unwrap();
-```
-
-### General PTY operations
-The `PTY` provides a set of operations to spawn and communicating with a process inside the PTY,
-as well to get information about its status.
-
-```rust
-// Spawn a process inside the pseudoterminal.
-pty.spawn(cmd, None, None, None).unwrap();
-
-// Read the spawned process standard output (non-blocking).
-let output = pty.read(false);
-
-// Write to the spawned process standard input.
-let to_write = OsString::from("echo \"some str\"\r\n");
-let num_bytes = pty.write(to_write).unwrap();
-
-// Change the PTY size.
-pty.set_size(80, 45).unwrap();
-
-// Know if the process running inside the PTY is alive.
-let is_alive = pty.is_alive().unwrap();
-
-// Get the process exit status (if the process has stopped).
-let exit_status = pty.get_exitstatus().unwrap();
-```
-
-## Important notes
-winpty-rs provides bindings to backend libraries that are intented to **interact** with Virtual Terminal applications
-(i.e., programs that expect interactive I/O) and while it can be used to spawn and communicate from/to Windows process in a headless fashion,
-output produced may contain VT100 ANSI escape sequences that **must** be handled in many cases by the final client, therefore, timeouts and
-other kind of unexpected behaviour caused due to non-handling of escape sequences is solely responsibility of the end user of this library.
-
-For example, the escape sequence `\x1b[5n` (devstat) expects a response with the current status of the terminal in the form of `\x1b[0n`. Similarly,
-the request `\x1b[6n` expects a response containing the current cursor position in the form `\x1b[v;h r`, backends such as ConPTY may hang waiting
-for the response of such requests.
-
-## Examples
-Please checkout the examples provided under the [examples](src/examples) folder, we provide examples for both
-ConPTY and WinPTY. In order to compile these examples, you can enable the `conpty_example` and `winpty_example`
-features when calling `cargo build`
-
-## Changelog
-Visit our [CHANGELOG](CHANGELOG.md) file to learn more about our new features and improvements.
-
-## Contribution guidelines
-We use `cargo clippy` to lint this project and `cargo test` to test its functionality. Feel free to send a PR or create an issue if you have any problem/question.
+ConPTY support and the old backend-selection API have been removed.
