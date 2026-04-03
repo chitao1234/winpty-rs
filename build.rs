@@ -4,6 +4,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use which::which;
 
@@ -148,14 +149,19 @@ fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<(), S
             if can_static {
                 LinkKind::Static
             } else {
-                return Err("WINPTY_STATIC=1 was set, but no static winpty library was found".into());
+                return Err(
+                    "WINPTY_STATIC=1 was set, but no static winpty library was found".into(),
+                );
             }
         }
         Some(false) => {
             if can_dynamic {
                 LinkKind::Dynamic
             } else {
-                return Err("WINPTY_STATIC=0 was set, but no dynamic winpty import library was found".into());
+                return Err(
+                    "WINPTY_STATIC=0 was set, but no dynamic winpty import library was found"
+                        .into(),
+                );
             }
         }
         None => {
@@ -187,9 +193,9 @@ fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<(), S
         }
         LinkKind::Static => {
             let static_lib = layout.static_lib.as_ref().unwrap();
-            let link_dir = static_lib
-                .parent()
-                .ok_or_else(|| "static winpty library does not have a parent directory".to_string())?;
+            let link_dir = static_lib.parent().ok_or_else(|| {
+                "static winpty library does not have a parent directory".to_string()
+            })?;
             println!("cargo:rustc-link-search=native={}", link_dir.display());
             println!("cargo:rustc-link-lib=static=winpty");
             emit_winpty_static_dependencies(target);
@@ -228,10 +234,9 @@ fn emit_dynamic_link(
     import_lib: &Path,
 ) -> Result<PathBuf, String> {
     if !target.is_gnu() {
-        return import_lib
-            .parent()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| format!("{library_name} import library does not have a parent directory"));
+        return import_lib.parent().map(Path::to_path_buf).ok_or_else(|| {
+            format!("{library_name} import library does not have a parent directory")
+        });
     }
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -252,12 +257,103 @@ fn emit_dynamic_link(
 }
 
 fn emit_winpty_static_dependencies(target: &TargetInfo) {
+    if target.is_gnu() {
+        emit_gnu_static_runtime_search_paths(target)
+            .unwrap_or_else(|err| panic!("failed to locate MinGW static runtime libraries: {err}"));
+        println!("cargo:rustc-link-lib=static=stdc++");
+        println!("cargo:rustc-link-lib=static=gcc_eh");
+        println!("cargo:rustc-link-lib=static=gcc");
+        println!("cargo:rustc-link-lib=static=winpthread");
+    }
+
     println!("cargo:rustc-link-lib=dylib=advapi32");
     println!("cargo:rustc-link-lib=dylib=user32");
+}
 
-    if target.is_gnu() {
-        println!("cargo:rustc-link-lib=stdc++");
+fn emit_gnu_static_runtime_search_paths(target: &TargetInfo) -> Result<(), String> {
+    let cxx = resolve_gnu_tool(target, "CXX", "g++")?;
+    let cc = resolve_gnu_tool(target, "CC", "gcc")?;
+
+    let search_paths = unique_dirs(&[
+        tool_print_file_name(&cxx, "libstdc++.a")?,
+        tool_print_file_name(&cc, "libgcc_eh.a")?,
+        tool_print_file_name(&cc, "libgcc.a")?,
+        tool_print_file_name(&cc, "libwinpthread.a")?,
+    ]);
+
+    for path in search_paths {
+        println!("cargo:rustc-link-search=native={}", path.display());
     }
+
+    Ok(())
+}
+
+fn resolve_gnu_tool(target: &TargetInfo, env_name: &str, suffix: &str) -> Result<String, String> {
+    if let Some(explicit) = env_var(env_name) {
+        let explicit = explicit.to_string_lossy().trim().to_string();
+        if !explicit.is_empty() {
+            return Ok(explicit);
+        }
+    }
+
+    let mut candidates = vec![format!("{}-{suffix}", target.triple)];
+
+    if let Some(prefix) = mingw_tool_prefix(target) {
+        candidates.push(format!("{prefix}-{suffix}"));
+    }
+
+    for candidate in &candidates {
+        if which(candidate).is_ok() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    Err(format!(
+        "no usable {suffix} tool found for target {}; tried {}",
+        target.triple,
+        candidates.join(", ")
+    ))
+}
+
+fn mingw_tool_prefix(target: &TargetInfo) -> Option<&'static str> {
+    match target.arch.as_str() {
+        "x86_64" => Some("x86_64-w64-mingw32"),
+        "x86" => Some("i686-w64-mingw32"),
+        "aarch64" => Some("aarch64-w64-mingw32"),
+        _ => None,
+    }
+}
+
+fn tool_print_file_name(tool: &str, file_name: &str) -> Result<PathBuf, String> {
+    let output = Command::new(tool)
+        .arg(format!("-print-file-name={file_name}"))
+        .output()
+        .map_err(|err| format!("failed to run {tool} for {file_name}: {err}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "{tool} -print-file-name={file_name} exited with status {}",
+            output.status
+        ));
+    }
+
+    let printed = String::from_utf8(output.stdout)
+        .map_err(|err| format!("failed to decode {tool} output for {file_name}: {err}"))?;
+    let library_path = PathBuf::from(printed.trim());
+
+    if !library_path.is_file() {
+        return Err(format!(
+            "{tool} reported {}, but the file does not exist",
+            library_path.display()
+        ));
+    }
+
+    library_path.parent().map(Path::to_path_buf).ok_or_else(|| {
+        format!(
+            "{tool} reported {}, but it has no parent directory",
+            library_path.display()
+        )
+    })
 }
 
 fn find_winpty_layout(host: &str) -> Result<Option<LibraryLayout>, String> {
@@ -335,11 +431,7 @@ fn resolve_layout(
         candidate.is_dir().then_some(candidate)
     });
 
-    let search_dirs = unique_dirs(&[
-        root.clone(),
-        lib_dir.clone(),
-        bin_dir.clone(),
-    ]);
+    let search_dirs = unique_dirs(&[root.clone(), lib_dir.clone(), bin_dir.clone()]);
 
     let layout = LibraryLayout {
         static_lib: find_existing(&search_dirs, spec.static_names),
@@ -376,7 +468,11 @@ fn auto_winpty_root() -> Option<PathBuf> {
     let bin_dir = agent.parent()?.to_path_buf();
     let parent = bin_dir.parent().unwrap_or(&bin_dir);
 
-    if bin_dir.file_name().map(|name| name == "bin").unwrap_or(false) && parent.join("lib").is_dir()
+    if bin_dir
+        .file_name()
+        .map(|name| name == "bin")
+        .unwrap_or(false)
+        && parent.join("lib").is_dir()
     {
         Some(parent.to_path_buf())
     } else {
@@ -477,7 +573,8 @@ fn validate_pe_arch(path: &Path, target_arch: &str, label: &str) -> Result<(), S
 }
 
 fn pe_machine_type(path: &Path) -> Result<u16, String> {
-    let file = File::open(path).map_err(|err| format!("failed to open {}: {err}", path.display()))?;
+    let file =
+        File::open(path).map_err(|err| format!("failed to open {}: {err}", path.display()))?;
     let mut reader = BufReader::new(file);
 
     reader
