@@ -1,5 +1,6 @@
+//! Base helpers used to generalize PTY I/O operations.
+
 use windows::core::{Error, HRESULT, PCSTR};
-/// Base struct used to generalize some of the PTY I/O operations.
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_IO_PENDING, HANDLE, STATUS_PENDING, S_OK, WAIT_FAILED, WAIT_OBJECT_0,
     WAIT_TIMEOUT,
@@ -23,7 +24,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
@@ -32,7 +32,7 @@ use std::os::windows::prelude::*;
 #[cfg(unix)]
 use std::vec::IntoIter;
 
-use crossbeam_channel::{unbounded, Sender, Receiver};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use super::PTYArgs;
 
@@ -98,7 +98,7 @@ pub trait PTYImpl: Sync + Send {
     /// * `cmdline` - Optional space-delimited arguments to provide to the executable.
     /// * `cwd` - Optional path from where the executable should be spawned.
     /// * `env` - Optional environment variables to provide to the process. Each
-    /// variable should be declared as `VAR=VALUE` and be separated by a NUL (0) character.
+    ///   variable should be declared as `VAR=VALUE` and be separated by a NUL (0) character.
     ///
     /// # Returns
     /// `true` if the call was successful, else an error will be returned.
@@ -220,7 +220,7 @@ fn read(
 
     const BUFFER_SIZE: usize = 32768;
     let os_str = "\0".repeat(BUFFER_SIZE);
-    let mut buf_vec: Vec<u8> = os_str.as_str().as_bytes().to_vec();
+    let mut buf_vec: Vec<u8> = os_str.as_bytes().to_vec();
     let mut chars_read = MaybeUninit::<u32>::uninit();
     let mut awaiting_io = false;
     unsafe {
@@ -237,9 +237,7 @@ fn read(
             S_OK
         } else {
             let err = Error::from_thread();
-            if let None = lp_overlapped {
-                Error::from_thread().into()
-            } else if err.code() != ERROR_IO_PENDING.into() {
+            if lp_overlapped.is_none() || err.code() != ERROR_IO_PENDING.into() {
                 Error::from_thread().into()
             } else {
                 awaiting_io = true;
@@ -262,11 +260,11 @@ fn read(
                         Error::from_thread().into()
                     } else {
                         *chars_read_ptr = (*overlapped).InternalHigh as u32;
-                        HRESULT((*overlapped).Internal as i32).into()
+                        HRESULT((*overlapped).Internal as i32)
                     }
                 } else {
                     *chars_read_ptr = (*overlapped).InternalHigh as u32;
-                    HRESULT((*overlapped).Internal as i32).into()
+                    HRESULT((*overlapped).Internal as i32)
                 }
             } else {
                 S_OK
@@ -289,7 +287,7 @@ fn read(
     //     return Ok((OsString::new(), awaiting_io));
     // }
 
-    let mut vec_buf: Vec<u16> = std::iter::repeat(0).take(buf_vec.len()).collect();
+    let mut vec_buf: Vec<u16> = std::iter::repeat_n(0, buf_vec.len()).collect();
 
     unsafe {
         MultiByteToWideChar(
@@ -450,9 +448,7 @@ impl PTYProcess {
         let reader_arc = Arc::new(AtomicBool::new(false));
         if !async_ {
             // Keep only the reading thread channel
-            let (reader_out_tx, reader_out_rx) =
-                unbounded::
-                <Option<Result<OsString, OsString>>>();
+            let (reader_out_tx, reader_out_rx) = unbounded::<Option<Result<OsString, OsString>>>();
             let (reader_alive_tx, reader_alive_rx) = unbounded::<bool>();
             let (reader_process_tx, reader_process_rx) = unbounded::<Option<LocalHandle>>();
             let spinlock_clone = Arc::clone(&thread_arc);
@@ -462,11 +458,8 @@ impl PTYProcess {
                 let process_result = reader_process_rx.recv();
                 if let Ok(Some(process)) = process_result {
                     reader_ready.store(true, Ordering::Release);
-                    let mut alive = reader_alive_rx
-                        .try_recv()
-                        .unwrap_or(true);
-                    while alive
-                    {
+                    let mut alive = reader_alive_rx.try_recv().unwrap_or(true);
+                    while alive {
                         if !is_eof(process.into(), conout.into()).unwrap() {
                             match read(true, conout.into(), using_pipes, None) {
                                 Ok((result, _)) => {
@@ -476,9 +469,7 @@ impl PTYProcess {
                                     reader_out_tx.send(Some(Err(err))).unwrap();
                                 }
                             }
-                            alive = reader_alive_rx
-                        .try_recv()
-                        .unwrap_or(true);
+                            alive = reader_alive_rx.try_recv().unwrap_or(true);
                         } else {
                             reader_out_tx.send(None).unwrap();
                             alive = false;
@@ -512,17 +503,14 @@ impl PTYProcess {
         } else {
             let mut write_overlapped = OVERLAPPED::default();
             unsafe {
-                match CreateEventExW(None, None, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS.0) {
-                    Ok(evt) => {
-                        write_overlapped.hEvent = evt;
-                    }
-
-                    Err(_) => (),
+                if let Ok(evt) =
+                    CreateEventExW(None, None, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS.0)
+                {
+                    write_overlapped.hEvent = evt;
                 }
             }
 
-            let (reader_out_tx, reader_out_rx) =
-                unbounded::<Option<Result<OsString, OsString>>>();
+            let (reader_out_tx, reader_out_rx) = unbounded::<Option<Result<OsString, OsString>>>();
             let (reader_alive_tx, reader_alive_rx) = unbounded::<bool>();
             let (reader_process_tx, reader_process_rx) = unbounded::<Option<LocalHandle>>();
             let spinlock_clone = Arc::clone(&thread_arc);
@@ -532,13 +520,10 @@ impl PTYProcess {
             let reader_thread = thread::spawn(move || {
                 let mut read_overlapped = OVERLAPPED::default();
                 unsafe {
-                    match CreateEventExW(None, None, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS.0)
+                    if let Ok(evt) =
+                        CreateEventExW(None, None, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS.0)
                     {
-                        Ok(evt) => {
-                            read_overlapped.hEvent = evt;
-                        }
-
-                        Err(_) => (),
+                        read_overlapped.hEvent = evt;
                     }
                 }
 
@@ -584,7 +569,7 @@ impl PTYProcess {
                             None => (),
                             Some(tx) => {
                                 // alive_tx.send(false);
-                                let _ = tx.send(true).unwrap_or(());
+                                tx.send(true).unwrap_or(());
                             }
                         }
                     }
@@ -662,9 +647,7 @@ impl PTYProcess {
                 None,
             );
 
-            let mut bytes_buf: Vec<u8> = std::iter::repeat(0)
-                .take((required_size) as usize)
-                .collect();
+            let mut bytes_buf: Vec<u8> = std::iter::repeat_n(0, required_size as usize).collect();
 
             WideCharToMultiByte(
                 CP_UTF8,
@@ -690,7 +673,7 @@ impl PTYProcess {
                         *write_pending = false;
                         if GetOverlappedResult(
                             Into::<HANDLE>::into(self.conin),
-                            &mut self.write_overlapped.unwrap(),
+                            &self.write_overlapped.unwrap(),
                             bytes_ptr,
                             true,
                         )
@@ -780,9 +763,7 @@ impl PTYProcess {
             let _total_bytes = bytes.assume_init();
 
             let is_alive = match self.is_alive() {
-                Ok(alive) => {
-                    alive || !self.reader_out_rx.is_empty()
-                },
+                Ok(alive) => alive || !self.reader_out_rx.is_empty(),
                 Err(err) => {
                     return Err(err);
                 }

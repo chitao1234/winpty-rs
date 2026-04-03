@@ -9,29 +9,30 @@
 //! [`WinPTY`]: https://github.com/rprichard/winpty
 //! [`ConPTY`]: https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
 
-
 #[macro_use]
 extern crate enum_primitive_derive;
 extern crate num_traits;
 
 pub mod pty;
 // mod pty_spawn;
-pub use pty::{PTY, PTYArgs, PTYBackend, MouseMode, AgentConfig};
+pub use pty::{AgentConfig, MouseMode, PTYArgs, PTYBackend, PTY};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
+    use std::ffi::OsString;
     use std::thread::sleep;
     use std::time::Duration;
-    use std::ffi::OsString;
+    use std::time::Instant;
 
     #[test]
     fn test_write_performance() {
         // Initialize PTY with default arguments
-        let mut args = PTYArgs::default();
-        args.cols = 80;
-        args.rows = 24;
+        let args = PTYArgs {
+            cols: 80,
+            rows: 24,
+            ..PTYArgs::default()
+        };
         let mut pty = PTY::new_with_backend(&args, PTYBackend::ConPTY).unwrap();
 
         // Spawn cmd.exe
@@ -67,14 +68,17 @@ mod tests {
     #[test]
     fn test_read_performance() {
         // Initialize PTY with default arguments
-        let mut args = PTYArgs::default();
-        args.cols = 80;
-        args.rows = 24;
+        let args = PTYArgs {
+            cols: 80,
+            rows: 24,
+            ..PTYArgs::default()
+        };
         let mut pty = PTY::new_with_backend(&args, PTYBackend::ConPTY).unwrap();
 
         // Spawn cmd.exe with a command that produces continuous output
         let cmd = OsString::from("c:\\windows\\system32\\cmd.exe");
-        pty.spawn(cmd, Some("/c echo test".into()), None, None).unwrap();
+        pty.spawn(cmd, Some("/c echo test".into()), None, None)
+            .unwrap();
         pty.write(OsString::from("\x1b[?1;0c\x1b[0;0R")).unwrap();
 
         // Wait for process to start
@@ -126,17 +130,15 @@ mod tests {
     #[test]
     fn test_nonblocking_read_performance() {
         // Initialize PTY with default arguments
-        let mut args = PTYArgs::default();
-        args.cols = 80;
-        args.rows = 24;
+        let args = PTYArgs {
+            cols: 80,
+            rows: 24,
+            ..PTYArgs::default()
+        };
 
         let mut pty = PTY::new_with_backend(&args, PTYBackend::ConPTY).unwrap();
-        pty.spawn(
-            "cmd.exe".into(),
-            Some("/c echo test".into()),
-            None,
-            None
-        ).unwrap();
+        pty.spawn("cmd.exe".into(), Some("/c echo test".into()), None, None)
+            .unwrap();
 
         pty.write(OsString::from("\x1b[?1;0c\x1b[0;0R")).unwrap();
 
@@ -166,10 +168,20 @@ mod tests {
         let duration = start.elapsed();
         println!("Non-blocking read performance test:");
         println!("Total time: {:?}", duration);
-        println!("Average time per read: {:?}ms", duration.as_secs_f64() * 1000.0 / (read_count + empty_reads) as f64);
+        println!(
+            "Average time per read: {:?}ms",
+            duration.as_secs_f64() * 1000.0 / (read_count + empty_reads) as f64
+        );
         println!("Total bytes read: {}", total_bytes);
         println!("Successful reads: {}", read_count);
         println!("Empty reads: {}", empty_reads);
-        println!("Average bytes per successful read: {}", if read_count > 0 { total_bytes / read_count } else { 0 });
+        println!(
+            "Average bytes per successful read: {}",
+            if read_count > 0 {
+                total_bytes / read_count
+            } else {
+                0
+            }
+        );
     }
 }

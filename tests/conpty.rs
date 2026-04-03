@@ -1,12 +1,12 @@
 #![cfg(conpty_available)]
 
+use regex::Regex;
 use std::ffi::OsString;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{thread, time};
-use regex::Regex;
 
-use winptyrs::{PTY, PTYArgs, PTYBackend, MouseMode, AgentConfig};
+use winptyrs::{AgentConfig, MouseMode, PTYArgs, PTYBackend, PTY};
 
 #[test]
 #[ignore]
@@ -16,7 +16,7 @@ fn spawn_conpty() {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
     let appname = OsString::from("C:\\Windows\\System32\\cmd.exe");
@@ -35,7 +35,7 @@ fn read_write_conpty() {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
     let appname = OsString::from("C:\\Windows\\System32\\cmd.exe");
@@ -63,7 +63,8 @@ fn read_write_conpty() {
     assert!(regex.is_match(output_str));
 
     let echo_regex = Regex::new(".*echo \"This is a test stri.*").unwrap();
-    pty.write(OsString::from("echo \"This is a test string 😁\"")).unwrap();
+    pty.write(OsString::from("echo \"This is a test string 😁\""))
+        .unwrap();
 
     output_str = "";
     while !echo_regex.is_match(output_str) {
@@ -96,7 +97,7 @@ fn set_size_conpty() {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
     let appname = OsString::from("C:\\Windows\\System32\\cmd.exe");
@@ -107,7 +108,8 @@ fn set_size_conpty() {
 
     // sleep(Duration::from_millis(5000));
 
-    pty.write("powershell -command \"&{(get-host).ui.rawui.WindowSize;}\"\r\n".into()).unwrap();
+    pty.write("powershell -command \"&{(get-host).ui.rawui.WindowSize;}\"\r\n".into())
+        .unwrap();
     let regex = Regex::new(r".*Width.*").unwrap();
     let mut output_str = "";
     let mut out = OsString::new();
@@ -150,14 +152,16 @@ fn set_size_conpty() {
     pty.write("cls\r\n".into()).unwrap();
     pty.write("cls\r\n".into()).unwrap();
 
+    let output_regex = Regex::new(r".*Width.*").unwrap();
+    let resized_num_regex = Regex::new(r".*\s+-*\s*-*\s+(\d+)\s+(\d+).*").unwrap();
     let mut count = 0;
     while count < 5 || (cols != 90 && rows != 30) {
-        pty.write("powershell -command \"&{(get-host).ui.rawui.WindowSize;}\"\r\n".into()).unwrap();
-        let regex = Regex::new(r".*Width.*").unwrap();
+        pty.write("powershell -command \"&{(get-host).ui.rawui.WindowSize;}\"\r\n".into())
+            .unwrap();
         let mut output_str = "";
         let mut out = OsString::new();
 
-        while !regex.is_match(output_str) {
+        while !output_regex.is_match(output_str) {
             out = pty.read(false).unwrap();
             output_str = out.to_str().unwrap();
         }
@@ -165,17 +169,16 @@ fn set_size_conpty() {
         println!("{:?}", output_str);
 
         let mut collect_vec: Vec<String> = Vec::new();
-        let num_regex = Regex::new(r".*\s+-*\s*-*\s+(\d+)\s+(\d+).*").unwrap();
         let mut collected_str = out.into_string().unwrap();
         collect_vec.push(collected_str.clone());
 
-        while !num_regex.is_match(&collected_str) {
+        while !resized_num_regex.is_match(&collected_str) {
             let out = pty.read(false).unwrap();
             collect_vec.push(out.into_string().unwrap());
             collected_str = collect_vec.join("");
         }
 
-        for cap in num_regex.captures_iter(&collected_str) {
+        for cap in resized_num_regex.captures_iter(&collected_str) {
             cols = cap[1].parse().unwrap();
             rows = cap[2].parse().unwrap();
         }
@@ -194,7 +197,7 @@ fn is_alive_exitstatus_conpty() {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
     let appname = OsString::from("C:\\Windows\\System32\\cmd.exe");
@@ -209,9 +212,7 @@ fn is_alive_exitstatus_conpty() {
     assert_eq!(pty.get_exitstatus().unwrap(), None);
 
     pty.write("exit\r\n".into()).unwrap();
-    while pty.is_alive().unwrap() {
-        ()
-    }
+    while pty.is_alive().unwrap() {}
     assert!(!pty.is_alive().unwrap());
     assert_eq!(pty.get_exitstatus().unwrap(), Some(0))
 }
@@ -223,7 +224,7 @@ fn wait_for_exit() {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
     let appname = OsString::from("C:\\Windows\\System32\\cmd.exe");
@@ -251,12 +252,20 @@ fn check_eof_output() {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
     let appname = OsString::from("python.exe");
     let mut pty = PTY::new_with_backend(&pty_args, PTYBackend::ConPTY).unwrap();
-    pty.spawn(appname, Some(OsString::from("-c \"print(\';\'.join([str(i) for i in range(0, 2048)]))\"")), None, None).unwrap();
+    pty.spawn(
+        appname,
+        Some(OsString::from(
+            "-c \"print(\';\'.join([str(i) for i in range(0, 2048)]))\"",
+        )),
+        None,
+        None,
+    )
+    .unwrap();
     assert!(pty.is_alive().unwrap());
     pty.write(OsString::from("\x1b[?1;0c\x1b[0;0R")).unwrap();
     // sleep(Duration::from_millis(5000));
@@ -267,14 +276,16 @@ fn check_eof_output() {
     while valid {
         let out_wrapped = pty.read(true);
         match out_wrapped {
-            Ok(out) =>{
+            Ok(out) => {
                 println!("{:?}", out);
                 collect_vec.push(out.clone().into_string().unwrap());
                 if out.is_empty() && !pty.is_eof().unwrap() {
                     valid = false;
                 }
-            },
-            Err(_) => {valid = false;}
+            }
+            Err(_) => {
+                valid = false;
+            }
         }
 
         // valid = valid && !pty.is_eof().unwrap();
@@ -286,5 +297,4 @@ fn check_eof_output() {
 
     println!("{:?}", output_str);
     let _ = pty.wait_for_exit();
-
 }

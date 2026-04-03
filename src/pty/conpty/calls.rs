@@ -7,9 +7,9 @@ use windows::core::Result;
 use windows::core::{Error, HRESULT};
 #[cfg(conpty_local_available)]
 use windows::Win32::Foundation::HANDLE;
-use windows::Win32::System::Console::HPCON;
 #[cfg(conpty_local_available)]
 use windows::Win32::System::Console::COORD;
+use windows::Win32::System::Console::HPCON;
 
 #[cfg(conpty_local_available)]
 use std::ffi::c_void;
@@ -19,7 +19,9 @@ use std::mem::MaybeUninit;
 use std::os::windows::raw;
 
 #[cfg(all(conpty_available, not(conpty_local_available)))]
-pub use windows::Win32::System::Console::{CreatePseudoConsole, ResizePseudoConsole, ClosePseudoConsole};
+pub use windows::Win32::System::Console::{
+    ClosePseudoConsole, CreatePseudoConsole, ResizePseudoConsole,
+};
 
 #[cfg(all(conpty_available, conpty_local_available))]
 use super::bindings::{

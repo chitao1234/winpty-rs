@@ -1,11 +1,12 @@
+//! Actual ConPTY implementation.
+
+use super::win_bindings::Windows::Wdk::Storage::FileSystem::NtCreateNamedPipeFile;
 use windows::core::HRESULT;
-/// Actual ConPTY implementation.
 use windows::core::{Error, Owned, PCWSTR, PWSTR};
 use windows::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows::Wdk::Storage::FileSystem::{
-    NtCreateFile, FILE_CREATE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-    FILE_OPEN_IF, FILE_PIPE_BYTE_STREAM_MODE, FILE_PIPE_BYTE_STREAM_TYPE,
-    FILE_PIPE_QUEUE_OPERATION, FILE_SYNCHRONOUS_IO_NONALERT,
+    NtCreateFile, FILE_CREATE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_PIPE_BYTE_STREAM_MODE,
+    FILE_PIPE_BYTE_STREAM_TYPE, FILE_PIPE_QUEUE_OPERATION, FILE_SYNCHRONOUS_IO_NONALERT,
 };
 use windows::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, GENERIC_READ, GENERIC_WRITE, HANDLE,
@@ -21,7 +22,6 @@ use windows::Win32::System::Console::{
     CONSOLE_MODE, COORD, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON, STD_ERROR_HANDLE,
     STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
 };
-use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
     InitializeProcThreadAttributeList, UpdateProcThreadAttribute, CREATE_UNICODE_ENVIRONMENT,
@@ -31,18 +31,19 @@ use windows::Win32::System::Threading::{
 use windows::Win32::System::WindowsProgramming::RtlInitUnicodeString;
 use windows::Win32::System::IO::IO_STATUS_BLOCK;
 use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
-use super::win_bindings::Windows::Wdk::Storage::FileSystem::NtCreateNamedPipeFile;
 // use windows_strings::PWSTR;
 
-use std::ffi::{c_void, OsString};
+use std::ffi::OsString;
 use std::mem::MaybeUninit;
 use std::ops::DerefMut;
 use std::os::windows::ffi::OsStrExt;
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{mem, ptr, thread};
 
-use super::calls::{ClosePseudoConsole, CreatePseudoConsole, ResizePseudoConsole, ShowHidePseudoConsole};
+use super::calls::{
+    ClosePseudoConsole, CreatePseudoConsole, ResizePseudoConsole, ShowHidePseudoConsole,
+};
 use crate::pty::PTYArgs;
 use crate::pty::{PTYImpl, PTYProcess};
 
@@ -55,8 +56,12 @@ pub struct ConPTY {
     process: PTYProcess,
     console_allocated: bool,
     release_info_tx: mpsc::Sender<(isize, isize, isize, isize, bool)>,
+    #[expect(
+        dead_code,
+        reason = "Retains ownership of the detached cleanup thread handle."
+    )]
     cleanup_thread: JoinHandle<()>,
-    cleanup_tx: mpsc::Sender<bool>
+    cleanup_tx: mpsc::Sender<bool>,
 }
 
 fn cleanup(
@@ -66,7 +71,7 @@ fn cleanup(
 ) {
     unsafe {
         // DeleteProcThreadAttributeList(startup_info);
-        let _ = ClosePseudoConsole(HPCON(handle));
+        ClosePseudoConsole(HPCON(handle));
 
         if console_allocated {
             let _ = FreeConsole();
@@ -92,7 +97,7 @@ impl PTYImpl for ConPTY {
             // Create a console window in case ConPTY is running in a GUI application.
             let console_allocated = AllocConsole().is_ok();
             if console_allocated {
-                let _ = ShowWindow(GetConsoleWindow(), SW_HIDE).unwrap();
+                ShowWindow(GetConsoleWindow(), SW_HIDE).unwrap();
             }
 
             // Recreate the standard stream inputs in case the parent process
@@ -213,10 +218,6 @@ impl PTYImpl for ConPTY {
             // - Close these after CreateProcess of child application with pseudoconsole object.
             let mut input_read_side = INVALID_HANDLE_VALUE;
             let mut output_write_side = INVALID_HANDLE_VALUE;
-
-            // - Hold onto these and use them for communication with the child through the pseudoconsole.
-            let mut output_read_side = INVALID_HANDLE_VALUE;
-            let mut input_write_side = INVALID_HANDLE_VALUE;
 
             // Setup PTY size
             let size = COORD {
@@ -351,7 +352,7 @@ impl PTYImpl for ConPTY {
                 return Err(string);
             }
 
-            if !DuplicateHandle(
+            if DuplicateHandle(
                 GetCurrentProcess(),
                 client_pipe,
                 GetCurrentProcess(),
@@ -360,7 +361,7 @@ impl PTYImpl for ConPTY {
                 true,
                 DUPLICATE_SAME_ACCESS,
             )
-            .is_ok()
+            .is_err()
             {
                 result = Error::from_thread().into();
                 let result_msg = result.message();
@@ -368,7 +369,7 @@ impl PTYImpl for ConPTY {
                 return Err(string);
             }
 
-            if !DuplicateHandle(
+            if DuplicateHandle(
                 GetCurrentProcess(),
                 client_pipe,
                 GetCurrentProcess(),
@@ -377,7 +378,7 @@ impl PTYImpl for ConPTY {
                 true,
                 DUPLICATE_SAME_ACCESS,
             )
-            .is_ok()
+            .is_err()
             {
                 result = Error::from_thread().into();
                 let result_msg = result.message();
@@ -431,7 +432,7 @@ impl PTYImpl for ConPTY {
             let hpcon_clone = Arc::clone(&hpcon_mutex);
 
             let cleanup_thread = thread::spawn(move || {
-                let (_hthread_ptr, _hprocess_ptr, _startup_ptr, hpcon_ptr, console_allocated) =
+                let (_hthread_ptr, _hprocess_ptr, _startup_ptr, _hpcon_ptr, console_allocated) =
                     release_info_rx.recv().unwrap();
                 let clean = cleanup_rx.recv().unwrap();
                 if clean {
@@ -441,7 +442,7 @@ impl PTYImpl for ConPTY {
                             // LocalHandle(hthread_ptr as *mut c_void),
                             // LocalHandle(hprocess_ptr as *mut c_void),
                             // LPPROC_THREAD_ATTRIBUTE_LIST(startup_ptr as *mut c_void),
-                            hpcon_guard.0.0,
+                            hpcon_guard.0 .0,
                             console_allocated,
                         );
                         *hpcon_guard = (hpcon_guard.0, false);
@@ -459,7 +460,7 @@ impl PTYImpl for ConPTY {
                 console_allocated,
                 release_info_tx,
                 cleanup_thread,
-                cleanup_tx
+                cleanup_tx,
             }) as Box<dyn PTYImpl>)
         }
     }
@@ -530,13 +531,13 @@ impl PTYImpl for ConPTY {
             };
 
             // Initialize the list memory location
-            if !InitializeProcThreadAttributeList(
+            if InitializeProcThreadAttributeList(
                 Some(start_info.lpAttributeList),
                 1,
                 Some(0),
                 &mut required_bytes,
             )
-            .is_ok()
+            .is_err()
             {
                 result = Error::from_thread().into();
                 let result_msg = result.message();
@@ -547,16 +548,16 @@ impl PTYImpl for ConPTY {
             let handle = self.handle.lock().unwrap();
 
             // Set the pseudoconsole information into the list
-            if !UpdateProcThreadAttribute(
+            if UpdateProcThreadAttribute(
                 start_info.lpAttributeList,
                 0,
                 0x00020016,
-                Some(handle.0.0 as _),
+                Some(handle.0 .0 as _),
                 mem::size_of::<HPCON>(),
                 None,
                 None,
             )
-            .is_ok()
+            .is_err()
             {
                 result = Error::from_thread().into();
                 let result_msg = result.message();
@@ -596,7 +597,7 @@ impl PTYImpl for ConPTY {
                     self.process_info.hProcess.0 as isize,
                     self.process_info.hThread.0 as isize,
                     self.startup_info.lpAttributeList.0 as isize,
-                    handle.0.0,
+                    handle.0 .0,
                     self.console_allocated,
                 ))
                 .unwrap();
@@ -618,7 +619,7 @@ impl PTYImpl for ConPTY {
             Y: rows as i16,
         };
         unsafe {
-            let guard =  self.handle.lock().unwrap();
+            let guard = self.handle.lock().unwrap();
             match ResizePseudoConsole(guard.0, size) {
                 Ok(_) => Ok(()),
                 Err(err) => {
@@ -681,9 +682,9 @@ impl Drop for ConPTY {
             }
 
             DeleteProcThreadAttributeList(self.startup_info.lpAttributeList);
-            let mut guard =  self.handle.lock().unwrap();
+            let mut guard = self.handle.lock().unwrap();
             if guard.1 {
-                let _ = ClosePseudoConsole(guard.0);
+                ClosePseudoConsole(guard.0);
                 *guard = (guard.0, false);
             }
 

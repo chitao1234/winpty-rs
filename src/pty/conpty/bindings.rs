@@ -3,7 +3,6 @@ use std::ffi::c_void;
 use std::os::windows::raw::HANDLE;
 use windows::Win32::System::Console::COORD;
 
-
 extern "C" {
     /// Creates a "Pseudo-console" (conpty) with dimensions (in characters)
     ///      provided by the `size` parameter. The caller should provide two handles:
