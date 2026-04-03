@@ -1,4 +1,4 @@
-#![cfg(feature="conpty")]
+#![cfg(conpty_available)]
 
 use std::ffi::OsString;
 use std::thread::sleep;

@@ -3,22 +3,22 @@
 /// This backend is available on Windows 10 starting from build number 1809.
 
 // Actual implementation if winpty is available
-#[cfg(feature="conpty")]
+#[cfg(conpty_available)]
 mod pty_impl;
 mod calls;
 
-#[cfg(all(feature="conpty", feature="conpty_local"))]
-mod bindings;
-
-#[cfg(all(feature="conpty", feature="conpty_local"))]
+#[cfg(conpty_available)]
 mod win_bindings;
 
-#[cfg(feature="conpty")]
+#[cfg(all(conpty_available, conpty_local_available))]
+mod bindings;
+
+#[cfg(conpty_available)]
 pub use pty_impl::ConPTY;
 
 // Default implementation if winpty is not available
-#[cfg(not(feature="conpty"))]
+#[cfg(not(conpty_available))]
 mod default_impl;
 
-#[cfg(not(feature="conpty"))]
+#[cfg(not(conpty_available))]
 pub use default_impl::ConPTY;

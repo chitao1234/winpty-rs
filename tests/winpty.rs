@@ -1,4 +1,4 @@
-#![cfg(feature="winpty")]
+#![cfg(winpty_available)]
 
 use std::ffi::OsString;
 use std::env;

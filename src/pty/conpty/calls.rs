@@ -2,24 +2,32 @@
 // mod bindings;
 #![allow(non_snake_case)]
 
-use windows::core::{Error, Result, HRESULT};
+use windows::core::Result;
+#[cfg(conpty_local_available)]
+use windows::core::{Error, HRESULT};
+#[cfg(conpty_local_available)]
 use windows::Win32::Foundation::HANDLE;
-use windows::Win32::System::Console::{COORD, HPCON};
+use windows::Win32::System::Console::HPCON;
+#[cfg(conpty_local_available)]
+use windows::Win32::System::Console::COORD;
 
+#[cfg(conpty_local_available)]
 use std::ffi::c_void;
+#[cfg(conpty_local_available)]
 use std::mem::MaybeUninit;
+#[cfg(conpty_local_available)]
 use std::os::windows::raw;
 
-#[cfg(all(feature = "conpty", not(feature = "conpty_local")))]
+#[cfg(all(conpty_available, not(conpty_local_available)))]
 pub use windows::Win32::System::Console::{CreatePseudoConsole, ResizePseudoConsole, ClosePseudoConsole};
 
-#[cfg(all(feature = "conpty", feature = "conpty_local"))]
+#[cfg(all(conpty_available, conpty_local_available))]
 use super::bindings::{
     ConptyClearPseudoConsole, ConptyClosePseudoConsole, ConptyCreatePseudoConsole,
     ConptyResizePseudoConsole, ConptyShowHidePseudoConsole,
 };
 
-#[cfg(all(feature = "conpty", feature = "conpty_local"))]
+#[cfg(all(conpty_available, conpty_local_available))]
 pub unsafe fn CreatePseudoConsole(
     size: COORD,
     hInput: HANDLE,
@@ -44,7 +52,7 @@ pub unsafe fn CreatePseudoConsole(
     }
 }
 
-#[cfg(all(feature = "conpty", feature = "conpty_local"))]
+#[cfg(all(conpty_available, conpty_local_available))]
 pub unsafe fn ResizePseudoConsole(hPC: HPCON, size: COORD) -> Result<()> {
     let result_code = ConptyResizePseudoConsole(hPC.0 as *mut c_void, size);
 
@@ -56,7 +64,7 @@ pub unsafe fn ResizePseudoConsole(hPC: HPCON, size: COORD) -> Result<()> {
     }
 }
 
-#[cfg(all(feature = "conpty", feature = "conpty_local"))]
+#[cfg(all(conpty_available, conpty_local_available))]
 pub unsafe fn ClearPseudoConsole(hPC: HPCON) -> Result<()> {
     let result_code = ConptyClearPseudoConsole(hPC.0 as *mut c_void);
 
@@ -68,7 +76,7 @@ pub unsafe fn ClearPseudoConsole(hPC: HPCON) -> Result<()> {
     }
 }
 
-#[cfg(all(feature = "conpty", feature = "conpty_local"))]
+#[cfg(all(conpty_available, conpty_local_available))]
 pub unsafe fn ClosePseudoConsole(hPC: HPCON) -> Result<()> {
     let result_code = ConptyClosePseudoConsole(hPC.0 as *mut c_void);
 
@@ -80,7 +88,7 @@ pub unsafe fn ClosePseudoConsole(hPC: HPCON) -> Result<()> {
     }
 }
 
-#[cfg(all(feature = "conpty", feature = "conpty_local"))]
+#[cfg(all(conpty_available, conpty_local_available))]
 pub unsafe fn ShowHidePseudoConsole(hPC: HPCON, show: bool) -> Result<()> {
     let result_code = ConptyShowHidePseudoConsole(hPC.0 as *mut c_void, show);
 
@@ -90,4 +98,9 @@ pub unsafe fn ShowHidePseudoConsole(hPC: HPCON, show: bool) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+#[cfg(all(conpty_available, not(conpty_local_available)))]
+pub unsafe fn ShowHidePseudoConsole(_hPC: HPCON, _show: bool) -> Result<()> {
+    Ok(())
 }

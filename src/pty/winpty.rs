@@ -7,20 +7,20 @@ use bitflags::bitflags;
 use enum_primitive_derive::Primitive;
 
 // Actual implementation if winpty is available
-#[cfg(feature="winpty")]
+#[cfg(winpty_available)]
 mod pty_impl;
 
-#[cfg(feature="winpty")]
+#[cfg(winpty_available)]
 mod bindings;
 
-#[cfg(feature="winpty")]
+#[cfg(winpty_available)]
 pub use pty_impl::WinPTY;
 
 // Default implementation if winpty is not available
-#[cfg(not(feature="winpty"))]
+#[cfg(not(winpty_available))]
 mod default_impl;
 
-#[cfg(not(feature="winpty"))]
+#[cfg(not(winpty_available))]
 pub use default_impl::WinPTY;
 
 ///  Mouse capture settings for the winpty backend.
