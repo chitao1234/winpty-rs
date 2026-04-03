@@ -9,15 +9,141 @@
 //! [`WinPTY`]: https://github.com/rprichard/winpty
 //! [`ConPTY`]: https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
 
+#[cfg(windows)]
 #[macro_use]
 extern crate enum_primitive_derive;
+#[cfg(windows)]
 extern crate num_traits;
 
+#[cfg(windows)]
 pub mod pty;
+#[cfg(windows)]
 // mod pty_spawn;
+#[cfg(windows)]
 pub use pty::{AgentConfig, MouseMode, PTYArgs, PTYBackend, PTY};
 
-#[cfg(test)]
+#[cfg(not(windows))]
+mod non_windows {
+    use std::ffi::OsString;
+
+    #[allow(non_camel_case_types)]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    pub enum MouseMode {
+        WINPTY_MOUSE_MODE_NONE,
+    }
+
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    pub struct AgentConfig(pub u64);
+
+    impl AgentConfig {
+        pub const WINPTY_FLAG_COLOR_ESCAPES: Self = Self(0);
+    }
+
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    pub enum PTYBackend {
+        ConPTY = 0,
+        WinPTY = 1,
+        Auto = 2,
+        NoBackend = 3,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct PTYArgs {
+        pub cols: i32,
+        pub rows: i32,
+        pub mouse_mode: MouseMode,
+        pub timeout: u32,
+        pub agent_config: AgentConfig,
+    }
+
+    impl Default for PTYArgs {
+        fn default() -> Self {
+            Self {
+                cols: 80,
+                rows: 24,
+                mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
+                timeout: 10_000,
+                agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
+            }
+        }
+    }
+
+    pub struct PTY {
+        backend: PTYBackend,
+    }
+
+    impl PTY {
+        pub fn new(_args: &PTYArgs) -> Result<PTY, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn new_with_backend(_args: &PTYArgs, backend: PTYBackend) -> Result<PTY, OsString> {
+            Err(OsString::from(format!(
+                "winpty-rs backend {:?} is only available on Windows",
+                backend
+            )))
+        }
+
+        pub fn spawn(
+            &mut self,
+            _appname: OsString,
+            _cmdline: Option<OsString>,
+            _cwd: Option<OsString>,
+            _env: Option<OsString>,
+        ) -> Result<bool, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn set_size(&self, _cols: i32, _rows: i32) -> Result<(), OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn get_backend(&self) -> PTYBackend {
+            self.backend
+        }
+
+        pub fn read(&self, _blocking: bool) -> Result<OsString, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn write(&self, _buf: OsString) -> Result<u32, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn is_eof(&self) -> Result<bool, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn get_exitstatus(&self) -> Result<Option<u32>, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn is_alive(&self) -> Result<bool, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn get_pid(&self) -> u32 {
+            0
+        }
+
+        pub fn get_fd(&self) -> isize {
+            -1
+        }
+
+        pub fn wait_for_exit(&self) -> Result<bool, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+
+        pub fn cancel_io(&self) -> Result<bool, OsString> {
+            Err(OsString::from("winpty-rs is only available on Windows"))
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub use non_windows::{AgentConfig, MouseMode, PTYArgs, PTYBackend, PTY};
+
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use std::ffi::OsString;
