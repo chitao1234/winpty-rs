@@ -22,15 +22,6 @@ glob = "0.3.2"
 enum-primitive-derive = "0.3.0"
 num-traits = "0.2"
 
-[dependencies.windows-strings]
-version = "0.5"
-
-[dependencies.windows-link]
-version = "0.2"
-
-[dependencies.windows-core]
-version = "0.62"
-
 [dependencies.windows]
 version = "0.62"
 features = [
@@ -49,15 +40,24 @@ features = [
     "Win32_System_WindowsProgramming"
 ]
 
-[build-dependencies.windows]
+[dependencies.windows-strings]
+version = "0.5"
+
+[dependencies.windows-link]
+version = "0.2"
+
+[dependencies.windows-core]
+version = "0.62"
+
+[target.'cfg(windows)'.build-dependencies.windows-bindgen]
+version = "0.64"
+
+[target.'cfg(windows)'.build-dependencies.windows]
 version = "0.62"
 features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader"
 ]
-
-[build-dependencies.windows-bindgen]
-version = "0.64"
 
 [dev-dependencies]
 regex = "1.5"
