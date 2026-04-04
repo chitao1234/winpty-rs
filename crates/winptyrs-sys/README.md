@@ -14,7 +14,7 @@ Discovery mode:
 Vendored mode:
 
 - enable the Cargo feature `vendored`
-- vendored builds use the bundled `vendor/winpty` source tree by default
+- vendored builds use the bundled `vendor/winpty` git submodule by default
 - set `WINPTY_SOURCE_DIR` to a winpty source tree such as `~/ddev/winpty` to
   override the bundled source
 - the build script compiles the selected source tree directly with the Rust

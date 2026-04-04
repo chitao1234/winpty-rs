@@ -19,8 +19,8 @@ To force vendored mode:
 winptyrs = { version = "0.1", features = ["vendored"] }
 ```
 
-Vendored mode uses the bundled `crates/winptyrs-sys/vendor/winpty` source tree
-by default.
+Vendored mode uses the bundled `crates/winptyrs-sys/vendor/winpty` git
+submodule by default.
 
 Discovery mode accepts the following environment variables:
 
@@ -35,7 +35,7 @@ Vendored mode optionally accepts:
 
 - `WINPTY_SOURCE_DIR=/path/to/winpty`
 
-The vendored build compiles the selected source tree directly from Rust build
+The vendored build compiles the selected winpty source tree directly from Rust build
 scripts using the `cc` crate, stages the resulting artifacts into `OUT_DIR`,
 and does not build in place. Vendored staging includes:
 
