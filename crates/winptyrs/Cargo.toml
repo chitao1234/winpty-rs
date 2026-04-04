@@ -15,7 +15,6 @@ vendored = ["winptyrs-sys/vendored"]
 
 [dependencies]
 bitflags = "2.3"
-crossbeam-channel = "0.5.15"
 thiserror = "2.0"
 winptyrs-sys = { path = "../winptyrs-sys", version = "0.1.0" }
 
