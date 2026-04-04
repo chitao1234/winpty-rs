@@ -199,7 +199,10 @@ fn main() {
         return;
     }
 
-    let layout = if env::var_os("CARGO_FEATURE_VENDORED").is_some() {
+    let use_vendored =
+        env::var_os("CARGO_FEATURE_VENDORED").is_some() && !has_explicit_winpty_layout_override();
+
+    let layout = if use_vendored {
         build_vendored_layout(&target).unwrap_or_else(|err| panic!("{err}"))
     } else {
         find_winpty_layout(&host)
@@ -246,6 +249,13 @@ fn build_vendored_layout(target: &TargetInfo) -> Result<LibraryLayout, String> {
         dll: Some(dll),
         runtime: Some(runtime),
     })
+}
+
+fn has_explicit_winpty_layout_override() -> bool {
+    env_path("WINPTY_DIR").is_some()
+        || env_path("WINPTY_LIB_DIR").is_some()
+        || env_path("WINPTY_BIN_DIR").is_some()
+        || env_path("WINPTY_INCLUDE_DIR").is_some()
 }
 
 fn default_vendor_source() -> Option<PathBuf> {
@@ -959,11 +969,11 @@ fn common_parent(first: Option<&Path>, second: Option<&Path>) -> Option<PathBuf>
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
-    env_var(name).map(PathBuf::from)
+    env_nonempty_var(name).map(PathBuf::from)
 }
 
 fn env_bool(name: &str) -> Option<bool> {
-    env_var(name).map(|value| parse_bool(name, &value))
+    env_nonempty_var(name).map(|value| parse_bool(name, &value))
 }
 
 fn env_var(name: &str) -> Option<OsString> {
@@ -980,6 +990,26 @@ fn env_var(name: &str) -> Option<OsString> {
 
     println!("cargo:rerun-if-env-changed={name}");
     env::var_os(name)
+}
+
+fn env_nonempty_var(name: &str) -> Option<OsString> {
+    let prefixed = format!(
+        "{}_{}",
+        env::var("TARGET").unwrap().to_uppercase().replace('-', "_"),
+        name
+    );
+
+    println!("cargo:rerun-if-env-changed={prefixed}");
+    if let Some(value) = env::var_os(&prefixed).filter(|value| !os_string_is_blank(value)) {
+        return Some(value);
+    }
+
+    println!("cargo:rerun-if-env-changed={name}");
+    env::var_os(name).filter(|value| !os_string_is_blank(value))
+}
+
+fn os_string_is_blank(value: &OsString) -> bool {
+    value.to_string_lossy().trim().is_empty()
 }
 
 fn parse_bool(name: &str, value: &OsString) -> bool {

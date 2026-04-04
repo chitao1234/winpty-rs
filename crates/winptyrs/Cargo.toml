@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["windows", "pty", "winpty", "pseudoterminal"]
 
 [features]
-default = []
+default = ["vendored"]
 vendored = ["winptyrs-sys/vendored"]
 
 [dependencies]

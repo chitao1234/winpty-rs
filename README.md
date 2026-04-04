@@ -12,17 +12,20 @@ This repository now contains two crates:
 winptyrs = "0.1"
 ```
 
-To force vendored mode:
+Vendored mode is the default. The crate uses the bundled
+`crates/winptyrs-sys/vendor/winpty` git submodule unless you point discovery at
+an installed winpty layout with a non-empty override such as `WINPTY_DIR`.
+
+If you disable default features upstream, you can re-enable vendored mode
+explicitly:
 
 ```toml
 [dependencies]
 winptyrs = { version = "0.1", features = ["vendored"] }
 ```
 
-Vendored mode uses the bundled `crates/winptyrs-sys/vendor/winpty` git
-submodule by default.
-
-Discovery mode accepts the following environment variables:
+Discovery mode accepts the following environment variables. Any non-empty value
+for one of these overrides the vendored default:
 
 - `WINPTY_DIR`
 - `WINPTY_LIB_DIR`

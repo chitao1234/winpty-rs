@@ -2,6 +2,10 @@
 
 Raw FFI bindings and native linking for winpty.
 
+Vendored mode is the default. The build script uses the bundled
+`vendor/winpty` tree unless you set a non-empty discovery override such as
+`WINPTY_DIR`.
+
 Discovery mode:
 
 - `WINPTY_DIR`
@@ -13,7 +17,8 @@ Discovery mode:
 
 Vendored mode:
 
-- enable the Cargo feature `vendored`
+- enabled by default
+- keep the Cargo feature `vendored` enabled when you want vendored behavior
 - vendored builds use the bundled `vendor/winpty` git submodule by default
 - set `WINPTY_SOURCE_DIR` to a winpty source tree such as `~/ddev/winpty` to
   override the bundled source

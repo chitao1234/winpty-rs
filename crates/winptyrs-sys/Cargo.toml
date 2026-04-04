@@ -21,7 +21,7 @@ include = [
 ]
 
 [features]
-default = []
+default = ["vendored"]
 vendored = []
 
 [build-dependencies]
