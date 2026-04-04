@@ -1,5 +1,5 @@
-use windows::Win32::Foundation::{STILL_ACTIVE, WAIT_OBJECT_0};
-use windows::Win32::System::Threading::{
+use windows_sys::Win32::Foundation::{STILL_ACTIVE, WAIT_OBJECT_0};
+use windows_sys::Win32::System::Threading::{
     GetExitCodeProcess, GetProcessId, WaitForSingleObject, INFINITE,
 };
 
@@ -21,9 +21,11 @@ impl Child {
 
     pub fn try_wait(&self) -> Result<Option<u32>> {
         let mut exit_code = 0u32;
-        unsafe { GetExitCodeProcess(self.process.0, &mut exit_code) }.map_err(windows_io_error)?;
+        if unsafe { GetExitCodeProcess(self.process.0, &mut exit_code) } == 0 {
+            return Err(windows_io_error().into());
+        }
 
-        if exit_code == STILL_ACTIVE.0 as u32 {
+        if exit_code == STILL_ACTIVE as u32 {
             Ok(None)
         } else {
             Ok(Some(exit_code))

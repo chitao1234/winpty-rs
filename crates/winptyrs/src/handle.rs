@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::ptr::NonNull;
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 
 use crate::Error;
 
@@ -13,7 +13,7 @@ unsafe impl Send for OwnedHandle {}
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
         unsafe {
-            if !self.0.is_invalid() {
+            if !self.0.is_null() && self.0 != INVALID_HANDLE_VALUE {
                 let _ = CloseHandle(self.0);
             }
         }
@@ -79,6 +79,6 @@ pub(crate) fn wide_nul(value: &OsStr) -> Vec<u16> {
     wide
 }
 
-pub(crate) fn windows_io_error(err: windows::core::Error) -> std::io::Error {
-    std::io::Error::other(err.to_string())
+pub(crate) fn windows_io_error() -> std::io::Error {
+    std::io::Error::last_os_error()
 }

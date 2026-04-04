@@ -1,8 +1,7 @@
 use std::ptr::{self, NonNull};
 
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Storage::FileSystem::{
+use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_NONE,
     OPEN_EXISTING,
 };
@@ -61,29 +60,33 @@ impl AgentBuilder {
 
         let conin = unsafe {
             CreateFileW(
-                PCWSTR(conin_name),
-                FILE_GENERIC_WRITE.0,
+                conin_name,
+                FILE_GENERIC_WRITE,
                 FILE_SHARE_NONE,
-                None,
+                ptr::null(),
                 OPEN_EXISTING,
                 FILE_ATTRIBUTE_NORMAL,
-                None,
+                ptr::null_mut(),
             )
+        };
+        if conin == INVALID_HANDLE_VALUE {
+            return Err(windows_io_error().into());
         }
-        .map_err(windows_io_error)?;
 
         let conout = unsafe {
             CreateFileW(
-                PCWSTR(conout_name),
-                FILE_GENERIC_READ.0,
+                conout_name,
+                FILE_GENERIC_READ,
                 FILE_SHARE_NONE,
-                None,
+                ptr::null(),
                 OPEN_EXISTING,
                 FILE_ATTRIBUTE_NORMAL,
-                None,
+                ptr::null_mut(),
             )
+        };
+        if conout == INVALID_HANDLE_VALUE {
+            return Err(windows_io_error().into());
         }
-        .map_err(windows_io_error)?;
 
         Ok(Pty {
             agent,
@@ -142,7 +145,7 @@ impl Pty {
         }
 
         Ok(Child {
-            process: OwnedHandle(HANDLE(process_handle)),
+            process: OwnedHandle(process_handle),
         })
     }
 
