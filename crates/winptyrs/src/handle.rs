@@ -6,6 +6,9 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use crate::Error;
 
 pub(crate) struct OwnedHandle(pub(crate) HANDLE);
+// Windows HANDLE values can be transferred between threads. This wrapper owns
+// the handle and only closes it on drop.
+unsafe impl Send for OwnedHandle {}
 
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
@@ -20,6 +23,11 @@ impl Drop for OwnedHandle {
 pub(crate) struct OwnedWinptyConfig(pub(crate) NonNull<winptyrs_sys::winpty_config_t>);
 pub(crate) struct OwnedWinpty(pub(crate) NonNull<winptyrs_sys::winpty_t>);
 pub(crate) struct OwnedSpawnConfig(pub(crate) NonNull<winptyrs_sys::winpty_spawn_config_t>);
+// winpty exposes opaque handle-like pointers. Moving ownership across threads is
+// sound as long as shared access stays synchronized by the caller.
+unsafe impl Send for OwnedWinptyConfig {}
+unsafe impl Send for OwnedWinpty {}
+unsafe impl Send for OwnedSpawnConfig {}
 
 impl Drop for OwnedWinptyConfig {
     fn drop(&mut self) {
