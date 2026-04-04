@@ -22,7 +22,16 @@ pub(crate) fn read_nonblocking(handle: HANDLE) -> Result<String> {
 pub(crate) fn read_blocking(handle: HANDLE) -> Result<String> {
     let mut buffer = vec![0u8; BUFFER_SIZE];
     let mut read = 0u32;
-    if unsafe { ReadFile(handle, buffer.as_mut_ptr().cast(), buffer.len() as u32, &mut read, std::ptr::null_mut()) } == 0 {
+    if unsafe {
+        ReadFile(
+            handle,
+            buffer.as_mut_ptr().cast(),
+            buffer.len() as u32,
+            &mut read,
+            std::ptr::null_mut(),
+        )
+    } == 0
+    {
         return Err(windows_io_error().into());
     }
 
