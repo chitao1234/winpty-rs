@@ -35,8 +35,15 @@ Vendored mode optionally accepts:
 
 - `WINPTY_SOURCE_DIR=/path/to/winpty`
 
-The vendored build copies the selected source tree into `OUT_DIR`, builds there,
-and links against the staged artifacts. It does not build in place.
+The vendored build compiles the selected source tree directly from Rust build
+scripts using the `cc` crate, stages the resulting artifacts into `OUT_DIR`,
+and does not build in place. Vendored staging includes:
+
+- `winpty.dll`
+- the matching import library
+- the static `libwinpty` archive
+- `winpty-agent.exe`
+- the public winpty headers
 
 ## Runtime Files
 

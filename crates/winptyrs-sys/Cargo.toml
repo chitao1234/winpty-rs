@@ -24,6 +24,7 @@ default = []
 vendored = []
 
 [build-dependencies]
+cc = { version = "1.2", features = ["parallel"] }
 which = "8.0.0"
 
 [package.metadata.docs.rs]

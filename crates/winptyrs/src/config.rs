@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 
 use bitflags::bitflags;
 
@@ -44,15 +44,22 @@ pub struct EnvBlock {
 }
 
 impl EnvBlock {
-    pub fn from_pairs<const N: usize>(pairs: [(&str, &str); N]) -> Self {
+    pub fn from_pairs<I, K, V>(pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
         let mut wide = Vec::new();
 
         for (key, value) in pairs {
-            wide.extend(format!("{key}={value}").encode_utf16());
+            push_os_wide(&mut wide, key.as_ref());
+            wide.push(b'=' as u16);
+            push_os_wide(&mut wide, value.as_ref());
             wide.push(0);
         }
 
-        if wide.last().copied() != Some(0) {
+        if wide.is_empty() {
             wide.push(0);
         }
         wide.push(0);
@@ -61,6 +68,20 @@ impl EnvBlock {
 
     pub fn as_wide(&self) -> &[u16] {
         &self.wide
+    }
+}
+
+fn push_os_wide(buffer: &mut Vec<u16>, value: &OsStr) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        buffer.extend(value.encode_wide());
+    }
+
+    #[cfg(not(windows))]
+    {
+        buffer.extend(value.to_string_lossy().encode_utf16());
     }
 }
 

@@ -8,6 +8,55 @@ use std::process::Command;
 
 use which::which;
 
+const LIBWINPTY_SOURCES: &[&str] = &[
+    "libwinpty/AgentLocation.cc",
+    "libwinpty/winpty.cc",
+    "shared/BackgroundDesktop.cc",
+    "shared/Buffer.cc",
+    "shared/DebugClient.cc",
+    "shared/GenRandom.cc",
+    "shared/OwnedHandle.cc",
+    "shared/StringUtil.cc",
+    "shared/WindowsSecurity.cc",
+    "shared/WindowsVersion.cc",
+    "shared/WinptyAssert.cc",
+    "shared/WinptyException.cc",
+    "shared/WinptyVersion.cc",
+];
+
+const AGENT_SOURCES: &[&str] = &[
+    "agent/Agent.cc",
+    "agent/AgentCreateDesktop.cc",
+    "agent/ConsoleFont.cc",
+    "agent/ConsoleInput.cc",
+    "agent/ConsoleInputReencoding.cc",
+    "agent/ConsoleLine.cc",
+    "agent/DebugShowInput.cc",
+    "agent/DefaultInputMap.cc",
+    "agent/EventLoop.cc",
+    "agent/InputMap.cc",
+    "agent/LargeConsoleRead.cc",
+    "agent/NamedPipe.cc",
+    "agent/Scraper.cc",
+    "agent/Terminal.cc",
+    "agent/Win32Console.cc",
+    "agent/Win32ConsoleBuffer.cc",
+    "agent/main.cc",
+    "shared/BackgroundDesktop.cc",
+    "shared/Buffer.cc",
+    "shared/DebugClient.cc",
+    "shared/GenRandom.cc",
+    "shared/OwnedHandle.cc",
+    "shared/StringUtil.cc",
+    "shared/WindowsSecurity.cc",
+    "shared/WindowsVersion.cc",
+    "shared/WinptyAssert.cc",
+    "shared/WinptyException.cc",
+    "shared/WinptyVersion.cc",
+];
+
+const PUBLIC_HEADERS: &[&str] = &["winpty.h", "winpty_constants.h"];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LinkKind {
     Static,
@@ -39,6 +88,10 @@ impl TargetInfo {
     fn is_gnu(&self) -> bool {
         self.env == "gnu"
     }
+
+    fn is_msvc(&self) -> bool {
+        self.env == "msvc"
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +119,70 @@ struct LibraryLayout {
     runtime: Option<PathBuf>,
 }
 
+#[derive(Clone, Debug)]
+struct VendoredPaths {
+    source_root: PathBuf,
+    src_root: PathBuf,
+    include_root: PathBuf,
+    build_root: PathBuf,
+    gen_dir: PathBuf,
+    shared_build_dir: PathBuf,
+    static_build_dir: PathBuf,
+    agent_build_dir: PathBuf,
+    stage_root: PathBuf,
+    stage_lib_dir: PathBuf,
+    stage_static_lib_dir: PathBuf,
+    stage_bin_dir: PathBuf,
+    stage_include_dir: PathBuf,
+}
+
+impl VendoredPaths {
+    fn new(source_root: PathBuf, out_dir: PathBuf) -> Self {
+        let build_root = out_dir.join("vendored-winpty-build");
+        let stage_root = out_dir.join("vendored-winpty-install");
+
+        Self {
+            src_root: source_root.join("src"),
+            include_root: source_root.join("src").join("include"),
+            gen_dir: build_root.join("gen"),
+            shared_build_dir: build_root.join("shared-lib"),
+            static_build_dir: build_root.join("static-lib"),
+            agent_build_dir: build_root.join("agent"),
+            stage_lib_dir: stage_root.join("lib"),
+            stage_static_lib_dir: stage_root.join("static-lib"),
+            stage_bin_dir: stage_root.join("bin"),
+            stage_include_dir: stage_root.join("include").join("winpty"),
+            source_root,
+            build_root,
+            stage_root,
+        }
+    }
+
+    fn prepare(&self) -> Result<(), String> {
+        recreate_dir(&self.build_root)?;
+        recreate_dir(&self.stage_root)?;
+        fs::create_dir_all(&self.gen_dir)
+            .map_err(|err| format!("failed to create {}: {err}", self.gen_dir.display()))?;
+        fs::create_dir_all(&self.stage_lib_dir)
+            .map_err(|err| format!("failed to create {}: {err}", self.stage_lib_dir.display()))?;
+        fs::create_dir_all(&self.stage_static_lib_dir).map_err(|err| {
+            format!(
+                "failed to create {}: {err}",
+                self.stage_static_lib_dir.display()
+            )
+        })?;
+        fs::create_dir_all(&self.stage_bin_dir)
+            .map_err(|err| format!("failed to create {}: {err}", self.stage_bin_dir.display()))?;
+        fs::create_dir_all(&self.stage_include_dir).map_err(|err| {
+            format!(
+                "failed to create {}: {err}",
+                self.stage_include_dir.display()
+            )
+        })?;
+        Ok(())
+    }
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=vendor/winpty");
@@ -83,7 +200,7 @@ fn main() {
     }
 
     let layout = if env::var_os("CARGO_FEATURE_VENDORED").is_some() {
-        build_vendored_layout().unwrap_or_else(|err| panic!("{err}"))
+        build_vendored_layout(&target).unwrap_or_else(|err| panic!("{err}"))
     } else {
         find_winpty_layout(&host)
             .unwrap_or_else(|err| panic!("{err}"))
@@ -99,51 +216,36 @@ fn main() {
     stage_runtime_files(&target, &layout, link_kind).unwrap_or_else(|err| panic!("{err}"));
 }
 
-fn build_vendored_layout() -> Result<LibraryLayout, String> {
+fn build_vendored_layout(target: &TargetInfo) -> Result<LibraryLayout, String> {
     let source_root = env_path("WINPTY_SOURCE_DIR")
         .or_else(default_vendor_source)
         .ok_or_else(|| {
             "vendored feature requires bundled vendor/winpty sources or WINPTY_SOURCE_DIR"
                 .to_string()
         })?;
+    println!("cargo:rerun-if-changed={}", source_root.display());
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let staged_source = out_dir.join("vendored-winpty-src");
-    let prefix = out_dir.join("vendored-winpty-install");
+    let paths = VendoredPaths::new(source_root, out_dir);
+    paths.prepare()?;
 
-    recreate_dir(&staged_source)?;
-    recreate_dir(&prefix)?;
-    copy_tree(&source_root, &staged_source)?;
+    generate_version_header(&paths)?;
+    stage_public_headers(&paths)?;
 
-    let shell = resolve_shell()?;
-    run(Command::new(&shell)
-        .arg("configure")
-        .current_dir(&staged_source))?;
-    run(Command::new("make").arg("-j4").current_dir(&staged_source))?;
-    run(Command::new("make")
-        .args([
-            "install-bin",
-            "install-lib",
-            "install-include",
-            &format!("PREFIX={}", prefix.display()),
-        ])
-        .current_dir(&staged_source))?;
+    let (import_lib, dll) = build_vendored_dynamic_lib(target, &paths)?;
+    let static_lib = build_vendored_static_lib(target, &paths)?;
+    let runtime = build_vendored_agent(target, &paths)?;
 
-    resolve_layout(
-        &LibrarySpec {
-            package_name: "winpty",
-            root_var: "WINPTY_DIR",
-            lib_var: "WINPTY_LIB_DIR",
-            bin_var: "WINPTY_BIN_DIR",
-            include_var: "WINPTY_INCLUDE_DIR",
-            static_names: &["libwinpty.a"],
-            import_names: &["winpty.lib", "libwinpty.dll.a"],
-            dll_names: &["winpty.dll"],
-            runtime_names: &["winpty-agent.exe", "winpty-agent"],
-        },
-        Some(prefix),
-    )?
-    .ok_or_else(|| "vendored winpty build did not produce a usable layout".to_string())
+    Ok(LibraryLayout {
+        root: paths.stage_root.clone(),
+        lib_dir: paths.stage_lib_dir.clone(),
+        bin_dir: paths.stage_bin_dir.clone(),
+        include_dir: Some(paths.stage_include_dir),
+        static_lib: Some(static_lib),
+        import_lib: Some(import_lib),
+        dll: Some(dll),
+        runtime: Some(runtime),
+    })
 }
 
 fn default_vendor_source() -> Option<PathBuf> {
@@ -160,69 +262,259 @@ fn recreate_dir(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|err| format!("failed to create {}: {err}", path.display()))
 }
 
-fn copy_tree(source: &Path, dest: &Path) -> Result<(), String> {
-    for entry in
-        fs::read_dir(source).map_err(|err| format!("failed to read {}: {err}", source.display()))?
-    {
-        let entry = entry.map_err(|err| format!("failed to read directory entry: {err}"))?;
-        let file_name = entry.file_name();
-        let source_path = entry.path();
+fn generate_version_header(paths: &VendoredPaths) -> Result<(), String> {
+    let version_path = paths.source_root.join("VERSION.txt");
+    let version = fs::read_to_string(&version_path)
+        .map_err(|err| format!("failed to read {}: {err}", version_path.display()))?
+        .trim_end_matches(['\r', '\n'])
+        .to_string();
+    let commit = env_var("WINPTY_COMMIT_HASH")
+        .map(|value| value.to_string_lossy().trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "none".to_string());
 
-        if matches!(file_name.to_str(), Some(".git" | "build")) {
-            continue;
-        }
+    let header = format!(
+        "// AUTO-GENERATED BY build.rs\nconst char GenVersion_Version[] = {version:?};\nconst char GenVersion_Commit[] = {commit:?};\n"
+    );
+    let output_path = paths.gen_dir.join("GenVersion.h");
+    fs::write(&output_path, header)
+        .map_err(|err| format!("failed to write {}: {err}", output_path.display()))
+}
 
-        let dest_path = dest.join(&file_name);
-        let file_type = entry
-            .file_type()
-            .map_err(|err| format!("failed to stat {}: {err}", source_path.display()))?;
-
-        if file_type.is_dir() {
-            fs::create_dir_all(&dest_path)
-                .map_err(|err| format!("failed to create {}: {err}", dest_path.display()))?;
-            copy_tree(&source_path, &dest_path)?;
-        } else if file_type.is_file() {
-            fs::copy(&source_path, &dest_path).map_err(|err| {
-                format!(
-                    "failed to copy {} to {}: {err}",
-                    source_path.display(),
-                    dest_path.display()
-                )
-            })?;
-        }
+fn stage_public_headers(paths: &VendoredPaths) -> Result<(), String> {
+    for header in PUBLIC_HEADERS {
+        let source = paths.include_root.join(header);
+        let dest = paths.stage_include_dir.join(header);
+        copy_file(&source, &dest)?;
     }
-
     Ok(())
 }
 
-fn resolve_shell() -> Result<String, String> {
-    if let Some(value) = env_var("SH") {
-        let explicit = value.to_string_lossy().trim().to_string();
-        if !explicit.is_empty() {
-            return Ok(explicit);
-        }
+fn build_vendored_dynamic_lib(
+    target: &TargetInfo,
+    paths: &VendoredPaths,
+) -> Result<(PathBuf, PathBuf), String> {
+    fs::create_dir_all(&paths.shared_build_dir).map_err(|err| {
+        format!(
+            "failed to create {}: {err}",
+            paths.shared_build_dir.display()
+        )
+    })?;
+
+    let mut build = common_cpp_build(paths, &paths.shared_build_dir);
+    build.define("COMPILING_WINPTY_DLL", None);
+    for source in LIBWINPTY_SOURCES {
+        build.file(paths.src_root.join(source));
     }
 
-    for candidate in ["bash", "sh"] {
-        if which(candidate).is_ok() {
-            return Ok(candidate.to_string());
-        }
+    let objects = build
+        .try_compile_intermediates()
+        .map_err(|err| format!("failed to compile vendored winpty.dll objects: {err}"))?;
+    let compiler = build
+        .try_get_compiler()
+        .map_err(|err| format!("failed to resolve the C++ compiler for winpty.dll: {err}"))?;
+
+    let dll = paths.stage_bin_dir.join("winpty.dll");
+    let import_lib = if target.is_msvc() {
+        paths.stage_lib_dir.join("winpty.lib")
+    } else {
+        paths.stage_lib_dir.join("libwinpty.dll.a")
+    };
+
+    link_shared_library(target, &compiler, &objects, &dll, &import_lib)?;
+    Ok((import_lib, dll))
+}
+
+fn build_vendored_static_lib(
+    target: &TargetInfo,
+    paths: &VendoredPaths,
+) -> Result<PathBuf, String> {
+    fs::create_dir_all(&paths.static_build_dir).map_err(|err| {
+        format!(
+            "failed to create {}: {err}",
+            paths.static_build_dir.display()
+        )
+    })?;
+
+    let mut build = common_cpp_build(paths, &paths.static_build_dir);
+    build.define("WINPTY_STATIC", None);
+    for source in LIBWINPTY_SOURCES {
+        build.file(paths.src_root.join(source));
     }
 
-    Err("unable to locate a POSIX shell for vendored winpty builds; set SH".to_string())
+    build
+        .try_compile("winpty")
+        .map_err(|err| format!("failed to compile vendored libwinpty: {err}"))?;
+
+    let built_library = find_existing(
+        std::slice::from_ref(&paths.static_build_dir),
+        if target.is_msvc() {
+            &["winpty.lib", "libwinpty.a"]
+        } else {
+            &["libwinpty.a", "winpty.lib"]
+        },
+    )
+    .ok_or_else(|| {
+        format!(
+            "cc build did not produce a usable static winpty library in {}",
+            paths.static_build_dir.display()
+        )
+    })?;
+
+    let staged_library = if target.is_msvc() {
+        paths.stage_static_lib_dir.join("winpty.lib")
+    } else {
+        paths.stage_static_lib_dir.join("libwinpty.a")
+    };
+    copy_file(&built_library, &staged_library)?;
+    Ok(staged_library)
+}
+
+fn build_vendored_agent(target: &TargetInfo, paths: &VendoredPaths) -> Result<PathBuf, String> {
+    fs::create_dir_all(&paths.agent_build_dir).map_err(|err| {
+        format!(
+            "failed to create {}: {err}",
+            paths.agent_build_dir.display()
+        )
+    })?;
+
+    let mut build = common_cpp_build(paths, &paths.agent_build_dir);
+    build.define("WINPTY_AGENT_ASSERT", None);
+    for source in AGENT_SOURCES {
+        build.file(paths.src_root.join(source));
+    }
+
+    let objects = build
+        .try_compile_intermediates()
+        .map_err(|err| format!("failed to compile vendored winpty agent objects: {err}"))?;
+    let compiler = build
+        .try_get_compiler()
+        .map_err(|err| format!("failed to resolve the C++ compiler for winpty-agent: {err}"))?;
+
+    let output = paths.stage_bin_dir.join("winpty-agent.exe");
+    link_agent_executable(target, &compiler, &objects, &output)?;
+    Ok(output)
+}
+
+fn common_cpp_build(paths: &VendoredPaths, out_dir: &Path) -> cc::Build {
+    let mut build = cc::Build::new();
+    build.cpp(true);
+    build.cargo_metadata(false);
+    build.out_dir(out_dir);
+    build.include(&paths.src_root);
+    build.include(&paths.include_root);
+    build.include(&paths.gen_dir);
+    build.define("UNICODE", None);
+    build.define("_UNICODE", None);
+    build.define("_WIN32_WINNT", Some("0x0501"));
+    build.define("NOMINMAX", None);
+    build.flag_if_supported("-std=c++11");
+    build.flag_if_supported("/EHsc");
+    build
+}
+
+fn link_agent_executable(
+    target: &TargetInfo,
+    compiler: &cc::Tool,
+    objects: &[PathBuf],
+    output: &Path,
+) -> Result<(), String> {
+    let mut command = compiler.to_command();
+
+    if compiler.is_like_msvc() {
+        command.args(objects);
+        command.arg("/link");
+        command.arg(format!("/OUT:{}", output.display()));
+        command.arg("advapi32.lib");
+        command.arg("shell32.lib");
+        command.arg("user32.lib");
+    } else {
+        command.arg("-o");
+        command.arg(output);
+        if target.is_gnu() {
+            command.arg("-static");
+            command.arg("-static-libgcc");
+            command.arg("-static-libstdc++");
+        }
+        command.args(objects);
+        command.arg("-ladvapi32");
+        command.arg("-lshell32");
+        command.arg("-luser32");
+    }
+
+    run(&mut command)
+}
+
+fn link_shared_library(
+    target: &TargetInfo,
+    compiler: &cc::Tool,
+    objects: &[PathBuf],
+    dll: &Path,
+    import_lib: &Path,
+) -> Result<(), String> {
+    let mut command = compiler.to_command();
+
+    if compiler.is_like_msvc() {
+        command.args(objects);
+        command.arg("/link");
+        command.arg("/DLL");
+        command.arg(format!("/OUT:{}", dll.display()));
+        command.arg(format!("/IMPLIB:{}", import_lib.display()));
+        command.arg("advapi32.lib");
+        command.arg("user32.lib");
+    } else {
+        command.arg("-shared");
+        command.arg("-o");
+        command.arg(dll);
+        if target.is_gnu() {
+            command.arg("-static");
+            command.arg("-static-libgcc");
+            command.arg("-static-libstdc++");
+        }
+        command.args(objects);
+        command.arg(format!("-Wl,--out-implib,{}", import_lib.display()));
+        command.arg("-ladvapi32");
+        command.arg("-luser32");
+    }
+
+    run(&mut command)
+}
+
+fn copy_file(source: &Path, dest: &Path) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+    }
+    fs::copy(source, dest).map_err(|err| {
+        format!(
+            "failed to copy {} to {}: {err}",
+            source.display(),
+            dest.display()
+        )
+    })?;
+    Ok(())
 }
 
 fn run(command: &mut Command) -> Result<(), String> {
     let rendered = format!("{command:?}");
-    let status = command
-        .status()
+    let output = command
+        .output()
         .map_err(|err| format!("failed to run {rendered}: {err}"))?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{rendered} exited with status {status}"))
+    if output.status.success() {
+        return Ok(());
     }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let mut message = format!("{rendered} exited with status {}", output.status);
+    if !stdout.is_empty() {
+        message.push_str(&format!("\nstdout:\n{stdout}"));
+    }
+    if !stderr.is_empty() {
+        message.push_str(&format!("\nstderr:\n{stderr}"));
+    }
+    Err(message)
 }
 
 fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<LinkKind, String> {

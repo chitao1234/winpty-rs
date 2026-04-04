@@ -17,8 +17,12 @@ Vendored mode:
 - vendored builds use the bundled `vendor/winpty` source tree by default
 - set `WINPTY_SOURCE_DIR` to a winpty source tree such as `~/ddev/winpty` to
   override the bundled source
-- the build script copies the selected source tree into `OUT_DIR`, runs `bash
-  configure`, then `make`, then `make install-bin install-lib install-include`
+- the build script compiles the selected source tree directly with the Rust
+  `cc` crate
+- vendored builds stage `winpty.dll`, the matching import library, the static
+  `libwinpty` archive, `winpty-agent.exe`, and the public headers into `OUT_DIR`
+- vendored builds do not require `sh`, `bash`, `make`, `gmake`, or the
+  upstream `configure` script
 
 Runtime notes:
 

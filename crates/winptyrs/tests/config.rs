@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+
 use winptyrs::{AgentBuilder, AgentFlags, EnvBlock, Error, MouseMode, PtySize};
 
 #[test]
@@ -26,7 +28,18 @@ fn env_block_is_double_nul_terminated() {
 
 #[test]
 fn empty_env_block_is_double_nul_terminated() {
-    let env = EnvBlock::from_pairs([]);
+    let env = EnvBlock::from_pairs(std::iter::empty::<(&str, &str)>());
 
     assert_eq!(env.as_wide(), &[0, 0]);
+}
+
+#[test]
+fn env_block_accepts_dynamic_os_string_pairs() {
+    let env = EnvBlock::from_pairs(vec![
+        (OsString::from("A"), OsString::from("1")),
+        (OsString::from("B"), OsString::from("2")),
+    ]);
+
+    let expected = "A=1\0B=2\0\0".encode_utf16().collect::<Vec<_>>();
+    assert_eq!(env.as_wide(), expected);
 }
