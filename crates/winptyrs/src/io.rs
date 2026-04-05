@@ -45,18 +45,35 @@ pub(crate) fn read_blocking(handle: HANDLE) -> Result<String> {
 
 pub(crate) fn write_utf8(handle: HANDLE, input: &str) -> Result<usize> {
     let bytes = input.as_bytes();
-    let mut written = 0u32;
-    if unsafe {
-        WriteFile(
-            handle,
-            bytes.as_ptr().cast(),
-            bytes.len() as u32,
-            &mut written,
-            std::ptr::null_mut(),
-        )
-    } == 0
-    {
-        return Err(windows_io_error().into());
+    let mut total_written = 0usize;
+
+    while total_written < bytes.len() {
+        let remaining = &bytes[total_written..];
+        let mut written = 0u32;
+        let chunk_len = remaining.len().min(u32::MAX as usize) as u32;
+
+        if unsafe {
+            WriteFile(
+                handle,
+                remaining.as_ptr().cast(),
+                chunk_len,
+                &mut written,
+                std::ptr::null_mut(),
+            )
+        } == 0
+        {
+            return Err(windows_io_error().into());
+        }
+
+        if written == 0 {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "short write to winpty console input handle",
+            )));
+        }
+
+        total_written += written as usize;
     }
-    Ok(written as usize)
+
+    Ok(total_written)
 }
