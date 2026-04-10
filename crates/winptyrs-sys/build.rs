@@ -563,10 +563,10 @@ fn configure_winpty(target: &TargetInfo, layout: &LibraryLayout) -> Result<LinkK
             }
         }
         None => {
-            if can_dynamic {
-                LinkKind::Dynamic
-            } else if can_static {
+            if can_static {
                 LinkKind::Static
+            } else if can_dynamic {
+                LinkKind::Dynamic
             } else {
                 return Err("winpty layout did not provide a static or dynamic library".into());
             }

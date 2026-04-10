@@ -12,6 +12,7 @@ Discovery mode:
 - `WINPTY_LIB_DIR`
 - `WINPTY_BIN_DIR`
 - `WINPTY_INCLUDE_DIR`
+- static linking is the default when both layouts are available
 - `WINPTY_STATIC=1` to force static linking
 - `WINPTY_STATIC=0` to force dynamic linking
 
