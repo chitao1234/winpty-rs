@@ -235,8 +235,14 @@ fn build_vendored_layout(target: &TargetInfo) -> Result<LibraryLayout, String> {
     generate_version_header(&paths)?;
     stage_public_headers(&paths)?;
 
-    let (import_lib, dll) = build_vendored_dynamic_lib(target, &paths)?;
-    let static_lib = build_vendored_static_lib(target, &paths)?;
+    let prefer_static = env_bool("WINPTY_STATIC");
+    let (static_lib, import_lib, dll) = match prefer_static {
+        Some(false) => {
+            let (import_lib, dll) = build_vendored_dynamic_lib(target, &paths)?;
+            (None, Some(import_lib), Some(dll))
+        }
+        Some(true) | None => (Some(build_vendored_static_lib(target, &paths)?), None, None),
+    };
     let runtime = build_vendored_agent(target, &paths)?;
 
     Ok(LibraryLayout {
@@ -244,9 +250,9 @@ fn build_vendored_layout(target: &TargetInfo) -> Result<LibraryLayout, String> {
         lib_dir: paths.stage_lib_dir.clone(),
         bin_dir: paths.stage_bin_dir.clone(),
         include_dir: Some(paths.stage_include_dir),
-        static_lib: Some(static_lib),
-        import_lib: Some(import_lib),
-        dll: Some(dll),
+        static_lib,
+        import_lib,
+        dll,
         runtime: Some(runtime),
     })
 }
