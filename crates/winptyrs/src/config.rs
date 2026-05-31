@@ -180,3 +180,84 @@ impl Default for AgentBuilder {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pty_size_accepts_nonzero_dimensions() {
+        assert_eq!(
+            PtySize::new(132, 43).unwrap(),
+            PtySize {
+                cols: 132,
+                rows: 43
+            }
+        );
+    }
+
+    #[test]
+    fn pty_size_rejects_zero_rows() {
+        let err = PtySize::new(80, 0).unwrap_err();
+        assert!(matches!(err, Error::InvalidSize { cols: 80, rows: 0 }));
+    }
+
+    #[test]
+    fn agent_builder_setters_update_configuration() {
+        let flags = AgentFlags::CONERR | AgentFlags::PLAIN_OUTPUT;
+        let builder = AgentBuilder::new()
+            .size(PtySize::new(120, 32).unwrap())
+            .mouse_mode(MouseMode::Force)
+            .timeout_ms(2_500)
+            .agent_flags(flags);
+
+        assert_eq!(
+            builder.pty_size(),
+            PtySize {
+                cols: 120,
+                rows: 32
+            }
+        );
+        assert_eq!(builder.selected_mouse_mode(), MouseMode::Force);
+        assert_eq!(builder.configured_timeout_ms(), 2_500);
+        assert_eq!(builder.configured_agent_flags(), flags);
+    }
+
+    #[test]
+    fn default_agent_builder_matches_new() {
+        let default = AgentBuilder::default();
+        let new = AgentBuilder::new();
+
+        assert_eq!(default.pty_size(), new.pty_size());
+        assert_eq!(default.selected_mouse_mode(), new.selected_mouse_mode());
+        assert_eq!(default.configured_timeout_ms(), new.configured_timeout_ms());
+        assert_eq!(
+            default.configured_agent_flags(),
+            new.configured_agent_flags()
+        );
+    }
+
+    #[test]
+    fn spawn_config_defaults_to_appname_only() {
+        let config = SpawnConfig::new("cmd.exe");
+
+        assert_eq!(config.appname, OsString::from("cmd.exe"));
+        assert_eq!(config.cmdline, None);
+        assert_eq!(config.cwd, None);
+        assert_eq!(config.env, None);
+    }
+
+    #[test]
+    fn spawn_config_setters_record_optional_fields() {
+        let env = EnvBlock::from_pairs([("WINPTYRS_TEST", "1")]);
+        let config = SpawnConfig::new("probe.exe")
+            .cmdline("--print-env")
+            .cwd("C:\\work")
+            .env(env.clone());
+
+        assert_eq!(config.appname, OsString::from("probe.exe"));
+        assert_eq!(config.cmdline, Some(OsString::from("--print-env")));
+        assert_eq!(config.cwd, Some(OsString::from("C:\\work")));
+        assert_eq!(config.env, Some(env));
+    }
+}
