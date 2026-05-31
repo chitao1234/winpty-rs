@@ -61,13 +61,13 @@ jobs:
         run: cargo test --workspace --all-targets -- --test-threads=1
       - name: Bundled vendored sys dynamic build
         shell: bash
-        run: WINPTY_STATIC=0 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+        run: RUSTFLAGS='' WINPTY_STATIC=0 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Bundled vendored sys static build
         shell: bash
-        run: WINPTY_STATIC=1 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+        run: RUSTFLAGS='' WINPTY_STATIC=1 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Override vendored source build
         shell: bash
-        run: WINPTY_SOURCE_DIR="$GITHUB_WORKSPACE/crates/winptyrs-sys/vendor/winpty" cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+        run: RUSTFLAGS='' WINPTY_SOURCE_DIR="$GITHUB_WORKSPACE/crates/winptyrs-sys/vendor/winpty" cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Verify staged runtime files
         shell: bash
         run: |
