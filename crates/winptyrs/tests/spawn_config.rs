@@ -2,23 +2,21 @@
 
 mod support;
 
-use std::path::Path;
-
 use support::{normalize_windows_path, read_probe_report, spawn_probe_exe};
 use winptyrs::{AgentBuilder, EnvBlock, SpawnConfig};
 
 #[test]
 fn spawn_config_sets_child_working_directory() {
     let mut pty = AgentBuilder::new().open().unwrap();
-    let cwd = "C:\\Windows";
+    let cwd = std::env::current_dir().unwrap();
     let _child = pty
-        .spawn(SpawnConfig::new(spawn_probe_exe()).cwd(cwd))
+        .spawn(SpawnConfig::new(spawn_probe_exe()).cwd(cwd.clone().into_os_string()))
         .unwrap();
 
     let report = read_probe_report(&pty);
     assert_eq!(
         normalize_windows_path(&report.cwd),
-        normalize_windows_path(Path::new(cwd))
+        normalize_windows_path(&cwd)
     );
 }
 

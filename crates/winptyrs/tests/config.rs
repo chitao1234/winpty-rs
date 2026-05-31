@@ -9,7 +9,7 @@ fn rejects_zero_dimensions() {
 }
 
 #[test]
-fn builder_defaults_match_the_legacy_crate_defaults() {
+fn builder_uses_documented_defaults() {
     let builder = AgentBuilder::new();
 
     assert_eq!(builder.pty_size(), PtySize::new(80, 24).unwrap());

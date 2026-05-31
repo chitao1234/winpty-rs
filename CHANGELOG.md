@@ -4,6 +4,8 @@
 - removed all ConPTY code, tests, and documentation
 - vendored builds now ship bundled winpty source in `winptyrs-sys`, with
   `WINPTY_SOURCE_DIR` kept as an override for local/custom trees
+- CI now checks out the vendored winpty submodule recursively and no longer
+  installs a separate conda winpty package
 - replaced the old backend-agnostic PTY API with a winpty-only wrapper API
 
 ## Version 1.0.2 (2025/08/05)

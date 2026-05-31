@@ -1,6 +1,8 @@
 #[allow(dead_code)]
 pub fn cmd_exe() -> String {
-    std::env::var("COMSPEC").unwrap_or_else(|_| "C:\\Windows\\System32\\cmd.exe".to_owned())
+    std::env::var("COMSPEC")
+        .or_else(|_| std::env::var("SystemRoot").map(|root| format!("{root}\\System32\\cmd.exe")))
+        .expect("Windows tests require COMSPEC or SystemRoot to locate cmd.exe")
 }
 
 #[cfg(windows)]

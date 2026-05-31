@@ -12,69 +12,75 @@ jobs:
     runs-on: windows-latest
     env:
       RUST_TOOLCHAIN: ${{ matrix.rust_toolchain }}
-      RUNNER_OS: "windows"
-      CI: "1"
     strategy:
       fail-fast: false
       matrix:
         rust_toolchain: ["stable", "nightly"]
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+          rustup target add x86_64-pc-windows-gnu
+      - name: Add clippy component
+        if: ${{ matrix.rust_toolchain == 'stable' }}
+        shell: bash
+        run: rustup component add clippy
+      - name: Verify vendored winpty checkout
+        shell: bash
+        run: |
+          test -f crates/winptyrs-sys/vendor/winpty/VERSION.txt
+          test -f crates/winptyrs-sys/vendor/winpty/src/include/winpty.h
       - name: Install grcov
         if: ${{ matrix.rust_toolchain == 'nightly' }}
-        shell: bash -l {0}
+        shell: bash
         run: cargo install grcov
       - name: Add llvm-tools-preview component
         if: ${{ matrix.rust_toolchain == 'nightly' }}
-        shell: bash -l {0}
+        shell: bash
         run: |
           rustup component add llvm-tools-preview
-          echo "RUSTFLAGS=-Cinstrument-coverage" >> $GITHUB_ENV
-      - name: Install miniconda
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          auto-update-conda: true
-          miniforge-version: latest
-          activate-environment: test
-          python-version: "3.10"
-      - name: Install winpty
-        shell: bash -l {0}
-        run: conda install -y winpty
+          echo "RUSTFLAGS=-Cinstrument-coverage" >> "$GITHUB_ENV"
       - name: Cargo lint
         if: ${{ matrix.rust_toolchain == 'stable' }}
-        shell: bash -l {0}
+        shell: bash
         run: cargo clippy --workspace --all-targets
       - name: Cargo build
-        shell: bash -l {0}
+        shell: bash
         run: cargo build --workspace --all-targets
       - name: Set LLVM_PROFILE_FILE
         if: ${{ matrix.rust_toolchain == 'nightly' }}
-        shell: bash -l {0}
-        run: echo "LLVM_PROFILE_FILE=winptyrs-%p-%m.profraw" >> $GITHUB_ENV
+        shell: bash
+        run: echo "LLVM_PROFILE_FILE=winptyrs-%p-%m.profraw" >> "$GITHUB_ENV"
       - name: Cargo test
-        shell: bash -l {0}
+        shell: bash
         run: cargo test --workspace --all-targets -- --test-threads=1
-      - name: Bundled vendored sys build
-        shell: bash -l {0}
-        run: cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
+      - name: Bundled vendored sys dynamic build
+        shell: bash
+        run: WINPTY_STATIC=0 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Bundled vendored sys static build
-        shell: bash -l {0}
+        shell: bash
         run: WINPTY_STATIC=1 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
-      - name: Override vendored sys build
-        shell: bash -l {0}
+      - name: Override vendored source build
+        shell: bash
         run: WINPTY_SOURCE_DIR="$GITHUB_WORKSPACE/crates/winptyrs-sys/vendor/winpty" cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Verify staged runtime files
-        shell: bash -l {0}
+        shell: bash
         run: |
           test -f target/debug/winpty-agent.exe
-          test -f target/debug/winpty.dll
           test -f target/debug/deps/winpty-agent.exe
-          test -f target/debug/deps/winpty.dll
+          test -f target/x86_64-pc-windows-gnu/debug/winpty-agent.exe
+          test -f target/x86_64-pc-windows-gnu/debug/winpty.dll
       - name: Gather test coverage
         if: ${{ matrix.rust_toolchain == 'nightly' }}
-        shell: bash -l {0}
+        shell: bash
         run: grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore "/*" -o lcov.info
       - name: Upload coverage results
+        if: ${{ matrix.rust_toolchain == 'nightly' }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

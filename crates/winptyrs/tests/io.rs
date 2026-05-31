@@ -38,9 +38,13 @@ fn read_nonblocking_returns_empty_when_no_output_is_available() {
 #[test]
 fn spawn_reports_missing_executable_as_an_error() {
     let mut pty = AgentBuilder::new().open().unwrap();
-    match pty.spawn(SpawnConfig::new(
-        "C:\\definitely-missing\\winptyrs-missing.exe",
-    )) {
+    let missing = std::env::temp_dir().join(format!(
+        "winptyrs-missing-{}-executable.exe",
+        std::process::id()
+    ));
+    assert!(!missing.exists());
+
+    match pty.spawn(SpawnConfig::new(missing.into_os_string())) {
         Ok(_) => panic!("spawning a missing executable should fail"),
         Err(err) => assert!(matches!(err, Error::Winpty(_))),
     }
