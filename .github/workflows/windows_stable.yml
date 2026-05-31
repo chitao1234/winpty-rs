@@ -30,6 +30,10 @@ jobs:
         if: ${{ matrix.rust_toolchain == 'stable' }}
         shell: bash
         run: rustup component add clippy
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust_toolchain }}
       - name: Verify vendored winpty checkout
         shell: bash
         run: |
@@ -37,8 +41,9 @@ jobs:
           test -f crates/winptyrs-sys/vendor/winpty/src/include/winpty.h
       - name: Install grcov
         if: ${{ matrix.rust_toolchain == 'nightly' }}
-        shell: bash
-        run: cargo install grcov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: grcov
       - name: Add llvm-tools-preview component
         if: ${{ matrix.rust_toolchain == 'nightly' }}
         shell: bash
@@ -60,15 +65,19 @@ jobs:
         shell: bash
         run: cargo test --workspace --all-targets -- --test-threads=1
       - name: Bundled vendored sys dynamic build
+        if: ${{ matrix.rust_toolchain == 'stable' }}
         shell: bash
         run: RUSTFLAGS='' WINPTY_STATIC=0 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Bundled vendored sys static build
+        if: ${{ matrix.rust_toolchain == 'stable' }}
         shell: bash
         run: RUSTFLAGS='' WINPTY_STATIC=1 cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Override vendored source build
+        if: ${{ matrix.rust_toolchain == 'stable' }}
         shell: bash
         run: RUSTFLAGS='' WINPTY_SOURCE_DIR="$GITHUB_WORKSPACE/crates/winptyrs-sys/vendor/winpty" cargo check -p winptyrs-sys --features vendored --target x86_64-pc-windows-gnu
       - name: Verify staged runtime files
+        if: ${{ matrix.rust_toolchain == 'stable' }}
         shell: bash
         run: |
           test -f target/debug/winpty-agent.exe
