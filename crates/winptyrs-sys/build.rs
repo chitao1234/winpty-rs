@@ -44,6 +44,7 @@ const AGENT_SOURCES: &[&str] = &[
     "agent/main.cc",
     "shared/BackgroundDesktop.cc",
     "shared/Buffer.cc",
+    "shared/ConsoleWindow.cc",
     "shared/DebugClient.cc",
     "shared/GenRandom.cc",
     "shared/OwnedHandle.cc",
